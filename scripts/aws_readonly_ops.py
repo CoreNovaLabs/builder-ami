@@ -205,6 +205,14 @@ def details_document(entity: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def agreement_filters(entity_id: str) -> list[dict[str, Any]]:
+    return [
+        {"name": "PartyType", "values": ["Proposer"]},
+        {"name": "AgreementType", "values": ["PurchaseAgreement"]},
+        {"name": "ResourceIdentifier", "values": [entity_id]},
+    ]
+
+
 def collect_marketplace() -> dict[str, Any]:
     summaries: list[dict[str, Any]] = []
     for product in load_products():
@@ -232,15 +240,7 @@ def collect_marketplace() -> dict[str, Any]:
                 "--catalog",
                 "AWSMarketplace",
                 "--filters",
-                json.dumps(
-                    [
-                        {"name": "PartyType", "values": ["Proposer"]},
-                        {
-                            "name": "ResourceIdentifier",
-                            "values": [entity_id],
-                        },
-                    ]
-                ),
+                json.dumps(agreement_filters(entity_id)),
                 "--max-results",
                 "50",
             ]

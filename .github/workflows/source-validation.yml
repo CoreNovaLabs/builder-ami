@@ -58,6 +58,16 @@ jobs:
           find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
           find marketplace -type f -name '*.json' -print0 | xargs -0 -n1 jq empty
           python scripts/validate_iam_boundaries.py
+          python - <<'PY'
+          from scripts.aws_readonly_ops import agreement_filters
+
+          filters = agreement_filters("prod-example")
+          assert filters == [
+              {"name": "PartyType", "values": ["Proposer"]},
+              {"name": "AgreementType", "values": ["PurchaseAgreement"]},
+              {"name": "ResourceIdentifier", "values": ["prod-example"]},
+          ]
+          PY
           CORENOVA_PRODUCTS_FILE=products.candidates.yaml python scripts/list_allowed_products.py --offline
           packer fmt -check packer/marketplace-ami.pkr.hcl
           packer init packer/marketplace-ami.pkr.hcl
