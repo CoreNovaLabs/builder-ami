@@ -71,11 +71,32 @@ def first_of_next_month(day: date) -> date:
     return date(day.year, day.month + 1, 1)
 
 
+def summarize_cost_period(period: dict[str, Any]) -> tuple[Decimal, dict[str, Decimal]]:
+    service_amounts: dict[str, Decimal] = {}
+    for group in period.get("Groups") or []:
+        keys = group.get("Keys") or []
+        if not keys:
+            continue
+        service = str(keys[0])
+        amount = decimal_amount(
+            (group.get("Metrics") or {}).get("UnblendedCost", {}).get("Amount")
+        )
+        if amount:
+            service_amounts[service] = service_amounts.get(service, Decimal("0")) + amount
+    if service_amounts:
+        return sum(service_amounts.values(), Decimal("0")), service_amounts
+    total = decimal_amount(
+        (period.get("Total") or {}).get("UnblendedCost", {}).get("Amount")
+    )
+    return total, service_amounts
+
+
 def collect_cost() -> dict[str, Any]:
     today = datetime.now(timezone.utc).date()
     month_start = today.replace(day=1)
     next_month = first_of_next_month(today)
     actual = Decimal("0")
+    service_amounts: dict[str, Decimal] = {}
 
     if today > month_start:
         response = run_aws(
@@ -88,13 +109,13 @@ def collect_cost() -> dict[str, Any]:
                 "MONTHLY",
                 "--metrics",
                 "UnblendedCost",
+                "--group-by",
+                "Type=DIMENSION,Key=SERVICE",
             ]
         )
         periods = response.get("ResultsByTime") or []
         if periods:
-            actual = decimal_amount(
-                (periods[0].get("Total") or {}).get("UnblendedCost", {}).get("Amount")
-            )
+            actual, service_amounts = summarize_cost_period(periods[0])
 
     forecast_response = run_aws(
         [
@@ -128,6 +149,12 @@ def collect_cost() -> dict[str, Any]:
         "currency": "USD",
         "month": month_start.strftime("%Y-%m"),
         "actual_to_utc_date": str(actual.quantize(Decimal("0.0001"))),
+        "actual_by_service": {
+            service: str(amount.quantize(Decimal("0.0001")))
+            for service, amount in sorted(
+                service_amounts.items(), key=lambda item: (-item[1], item[0])
+            )
+        },
         "forecast_remaining": str(remaining.quantize(Decimal("0.0001"))),
         "projected_month_total": str(projected.quantize(Decimal("0.0001"))),
         "guard_level": level,

@@ -59,7 +59,9 @@ jobs:
           find marketplace -type f -name '*.json' -print0 | xargs -0 -n1 jq empty
           python scripts/validate_iam_boundaries.py
           python - <<'PY'
-          from scripts.aws_readonly_ops import agreement_filters
+          from decimal import Decimal
+
+          from scripts.aws_readonly_ops import agreement_filters, summarize_cost_period
 
           filters = agreement_filters("prod-example")
           assert filters == [
@@ -67,6 +69,14 @@ jobs:
               {"name": "AgreementType", "values": ["PurchaseAgreement"]},
               {"name": "ResourceIdentifier", "values": ["prod-example"]},
           ]
+          total, services = summarize_cost_period({
+              "Groups": [
+                  {"Keys": ["Amazon EC2"], "Metrics": {"UnblendedCost": {"Amount": "1.25"}}},
+                  {"Keys": ["AWS Cost Explorer"], "Metrics": {"UnblendedCost": {"Amount": "0.01"}}},
+              ]
+          })
+          assert total == Decimal("1.26")
+          assert services == {"Amazon EC2": Decimal("1.25"), "AWS Cost Explorer": Decimal("0.01")}
           PY
           CORENOVA_PRODUCTS_FILE=products.candidates.yaml python scripts/list_allowed_products.py --offline
           packer fmt -check packer/marketplace-ami.pkr.hcl
