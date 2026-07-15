@@ -1,0 +1,262 @@
+aws:
+  region: us-east-1
+  marketplace_catalog: AWSMarketplace
+  seller_account_id: "582920575154"
+  build_subnet_id: subnet-015304a4430329088
+  marketplace_access_role_name: AwsMarketplaceAmiIngestion
+
+products:
+  - key: centos-stream-9-x86_64-ext4
+    title: "CentOS Stream 9 Hardened Base Image (x86_64, Ext4)"
+    entity_id: prod-nptqkfuwrh5ik
+    visibility: Limited
+    architecture: x86_64
+    operating_system_name: CENTOS
+    operating_system_version: "9 Stream"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    instance_types:
+      - m5.large
+      - m5.xlarge
+      - m6i.large
+      - t3.nano
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - t3a.micro
+      - t3a.small
+      - t3a.medium
+      - t3a.large
+      - t3a.xlarge
+      - t3a.2xlarge
+    source_ami:
+      owner: "125523088429"
+      name_pattern: "CentOS Stream 9 x86_64 *"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 47b13fb2-11b6-39e5-bb29-19a6da354232
+
+  - key: almalinux-9-x86_64-lvm-xfs
+    title: "AlmaLinux 9 Hardened Production AMI (x86_64, LVM, XFS)"
+    entity_id: prod-ereepz5xafyw2
+    visibility: Limited
+    architecture: x86_64
+    operating_system_name: OTHERLINUX
+    operating_system_version: "AlmaLinux 9"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: lvm-xfs
+    filesystem: xfs
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    source_ami:
+      owner: "764336703387"
+      name_pattern: "AlmaLinux OS 9* x86_64*"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 6a5d48ae-0eb5-354a-8812-67d47079d629
+
+  - key: almalinux-9-arm64-lvm-xfs
+    title: "AlmaLinux 9 Hardened Graviton AMI (ARM64, LVM, XFS)"
+    entity_id: prod-uca3f3ujrl5gg
+    visibility: Limited
+    architecture: arm64
+    operating_system_name: OTHERLINUX
+    operating_system_version: "AlmaLinux 9"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: lvm-xfs
+    filesystem: xfs
+    recommended_instance_type: t4g.medium
+    build_instance_type: t4g.medium
+    source_ami:
+      owner: "764336703387"
+      name_pattern: "AlmaLinux OS 9* aarch64*"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 5fdcc190-cd65-39ba-a29e-547502ce1aa4
+
+  - key: amazon-linux-2023-arm64-64k
+    title: "Amazon Linux 2023 Graviton Hardened (ARM64, 64K-Page)"
+    entity_id: prod-fkmhgwyoiz5ls
+    visibility: Limited
+    architecture: arm64
+    operating_system_name: AMAZONLINUX
+    operating_system_version: "Amazon Linux 2023"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/xvda
+    root_volume_size: 8
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: t4g.medium
+    build_instance_type: t4g.medium
+    source_ami:
+      ssm_parameter: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    legacy:
+      version_title: v20260611
+      delivery_option_id: d61297d6-c688-3e9d-afab-daea384d2a3e
+
+  - key: debian-12-arm64-lvm
+    title: "Debian 12 Bookworm Hardened Graviton (ARM64, LVM)"
+    entity_id: prod-hv5ebdtqf2too
+    visibility: Limited
+    architecture: arm64
+    operating_system_name: DEBIAN
+    operating_system_version: "12"
+    ssh_username: admin
+    scanning_port: 22
+    root_device_name: /dev/xvda
+    root_volume_size: 8
+    layout: lvm
+    filesystem: ext4
+    recommended_instance_type: t4g.medium
+    build_instance_type: t4g.medium
+    source_ami:
+      owner: "136693071363"
+      name_pattern: "debian-12-arm64-*"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 36716259-48ff-32ac-a898-7cc79e246b76
+
+  - key: debian-12-x86_64-ext4
+    title: "Debian 12 Bookworm Minimal Hardened Base Image (x86_64, Ext4)"
+    entity_id: prod-xn4vfcpfcxqoq
+    visibility: Limited
+    architecture: x86_64
+    operating_system_name: DEBIAN
+    operating_system_version: "12"
+    ssh_username: admin
+    scanning_port: 22
+    root_device_name: /dev/xvda
+    root_volume_size: 8
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    source_ami:
+      owner: "136693071363"
+      name_pattern: "debian-12-amd64-*"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 4fb4f03f-3847-39d1-aefb-6dc8edd170de
+
+  - key: ubuntu-2404-arm64-lvm-xfs
+    title: "Ubuntu 24.04 LTS Hardened for AWS Graviton (ARM64, LVM, XFS)"
+    entity_id: prod-4tnfzjf4ynkgw
+    visibility: Limited
+    architecture: arm64
+    operating_system_name: UBUNTU
+    operating_system_version: "24.04 LTS"
+    ssh_username: ubuntu
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: lvm-xfs
+    filesystem: xfs
+    recommended_instance_type: t4g.medium
+    build_instance_type: t4g.medium
+    source_ami:
+      ssm_parameter: /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id
+    legacy:
+      version_title: v20260611
+      delivery_option_id: bc462f17-ca9f-398d-84b9-c8d63396460d
+
+  - key: ubuntu-2204-arm64-lvm-xfs
+    title: "Ubuntu 22.04 LTS Hardened for AWS Graviton (ARM64, LVM, XFS)"
+    entity_id: prod-7cvvy2gp6ryoc
+    visibility: Limited
+    architecture: arm64
+    operating_system_name: UBUNTU
+    operating_system_version: "22.04 LTS"
+    ssh_username: ubuntu
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: lvm-xfs
+    filesystem: xfs
+    recommended_instance_type: t4g.medium
+    build_instance_type: t4g.medium
+    source_ami:
+      ssm_parameter: /aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id
+    legacy:
+      version_title: v20260611
+      delivery_option_id: c8020380-dff4-3f4b-9858-7bd69f7af657
+
+  - key: rocky-9-arm64-lvm-xfs
+    title: "Rocky Linux 9 Hardened Graviton AMI (ARM64, LVM, XFS)"
+    entity_id: prod-j4fhcdjn5o46o
+    visibility: Limited
+    architecture: arm64
+    operating_system_name: OTHERLINUX
+    operating_system_version: "Rocky Linux 9"
+    ssh_username: rocky
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: lvm-xfs
+    filesystem: xfs
+    recommended_instance_type: t4g.medium
+    build_instance_type: t4g.medium
+    source_ami:
+      owner: "792107900819"
+      name_pattern: "Rocky-9-EC2-Base-9*aarch64"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 1f5cdc1b-768f-3b50-a5a9-2bf32ef7050e
+
+  - key: rocky-9-x86_64-lvm-xfs
+    title: "Rocky Linux 9 Hardened Production AMI (x86_64, LVM, XFS)"
+    entity_id: prod-lyolayhuy6hi2
+    visibility: Limited
+    architecture: x86_64
+    operating_system_name: OTHERLINUX
+    operating_system_version: "Rocky Linux 9"
+    ssh_username: rocky
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: lvm-xfs
+    filesystem: xfs
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    source_ami:
+      owner: "792107900819"
+      name_pattern: "Rocky-9-EC2-Base-9*x86_64"
+    legacy:
+      version_title: v20260611
+      delivery_option_id: ca635cd4-adc8-318f-866a-4a1d0d30b085
+
+  - key: ubuntu-2404-x86_64-ext4
+    title: "Ubuntu 24.04 LTS Minimal Hardened Base Image (x86_64, Ext4)"
+    entity_id: prod-xcp3pur5ik4ti
+    visibility: Limited
+    architecture: x86_64
+    operating_system_name: UBUNTU
+    operating_system_version: "24.04 LTS"
+    ssh_username: ubuntu
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    source_ami:
+      ssm_parameter: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 4da4dc33-a0a1-3219-8321-f2fb22be1ac7

@@ -1,0 +1,9 @@
+github_repository = "builder-ami"
+
+# Leave false. Change to true only during an explicitly reviewed, one-time root
+# bootstrap; return it to false immediately afterward.
+allow_root_bootstrap = false
+
+# Immutable GitHub OIDC subject for CoreNovaLabs/builder-ami on main. Do not
+# replace this with a mutable repository-name-only subject.
+github_oidc_subject = "repo:CoreNovaLabs@283825262/builder-ami@1301293394:ref:refs/heads/main"

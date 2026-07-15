@@ -1,0 +1,184 @@
+- name: Wait for cloud-init package locks on Debian family
+  ansible.builtin.shell: |
+    while fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock >/dev/null 2>&1; do
+      sleep 5
+    done
+  changed_when: false
+  when: ansible_os_family == "Debian"
+
+- name: Update Debian family package metadata
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Upgrade Debian family packages
+  ansible.builtin.apt:
+    upgrade: dist
+  when: ansible_os_family == "Debian"
+
+- name: Install Debian family baseline packages
+  ansible.builtin.apt:
+    name:
+      - aide
+      - auditd
+      - ca-certificates
+      - chrony
+      - cloud-init
+      - rsyslog
+      - sudo
+      - unattended-upgrades
+      - ufw
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Upgrade RedHat family packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  when: ansible_os_family == "RedHat"
+
+- name: Install RedHat family baseline packages
+  ansible.builtin.dnf:
+    name:
+      - aide
+      - audit
+      - ca-certificates
+      - chrony
+      - cloud-init
+      - dnf-automatic
+      - firewalld
+      - rsyslog
+      - sudo
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Write SSH hardening drop-in
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-corenova-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      ChallengeResponseAuthentication no
+      PubkeyAuthentication yes
+      PermitEmptyPasswords no
+      X11Forwarding no
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      MaxAuthTries 4
+  notify: restart ssh
+
+- name: Write kernel network hardening
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-corenova-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.secure_redirects = 0
+      net.ipv4.conf.default.secure_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.icmp_ignore_bogus_error_responses = 1
+      net.ipv4.tcp_syncookies = 1
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+  notify: reload sysctl
+
+- name: Enable audit and logging services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - rsyslog
+    - "{{ 'auditd' if ansible_os_family == 'Debian' else 'auditd' }}"
+  failed_when: false
+
+- name: Enable time sync service
+  ansible.builtin.service:
+    name: "{{ 'chrony' if ansible_os_family == 'Debian' else 'chronyd' }}"
+    enabled: true
+    state: started
+  failed_when: false
+
+- name: Configure firewalld on RedHat family
+  ansible.builtin.service:
+    name: firewalld
+    enabled: true
+    state: started
+  when: ansible_os_family == "RedHat"
+
+- name: Allow SSH through firewalld
+  ansible.posix.firewalld:
+    service: ssh
+    permanent: true
+    immediate: true
+    state: enabled
+  when: ansible_os_family == "RedHat"
+
+- name: Configure UFW SSH baseline
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - ufw allow OpenSSH
+    - ufw --force enable
+  changed_when: true
+  when: ansible_os_family == "Debian"
+
+- name: Configure unattended upgrades on Debian family
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  when: ansible_os_family == "Debian"
+
+- name: Enable dnf automatic on RedHat family
+  ansible.builtin.service:
+    name: dnf-automatic.timer
+    enabled: true
+    state: started
+  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Configure EKS admin bastion profile
+  ansible.builtin.import_tasks: eks_admin_bastion.yml
+  when: product_profile | default('hardened-linux') == "eks-admin-bastion"
+
+- name: Initialize AIDE database
+  ansible.builtin.shell: |
+    if command -v aideinit >/dev/null 2>&1; then
+      aideinit
+    elif command -v aide >/dev/null 2>&1; then
+      aide --init
+      if [ -f /var/lib/aide/aide.db.new.gz ]; then
+        cp -f /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+      elif [ -f /var/lib/aide/aide.db.new ]; then
+        cp -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+      fi
+    fi
+  args:
+    creates: /var/lib/aide/aide.db.gz
+  failed_when: false
+
+- name: Remove temporary package caches
+  ansible.builtin.shell: |
+    if command -v apt-get >/dev/null 2>&1; then
+      apt-get clean
+    fi
+    if command -v dnf >/dev/null 2>&1; then
+      dnf clean all
+    fi
+  changed_when: true

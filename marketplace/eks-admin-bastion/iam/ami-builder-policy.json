@@ -1,0 +1,281 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSource",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": [
+        "arn:aws:ssm:us-east-1::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
+        "arn:aws:ssm:us-east-1::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+      ]
+    },
+    {
+      "Sid": "ReadEC2",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeImageAttribute",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceTypeOfferings",
+        "ec2:DescribeInstances",
+        "ec2:DescribeRegions",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSnapshots",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeVpcs"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "CreateKey",
+      "Effect": "Allow",
+      "Action": "ec2:CreateKeyPair",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:key-pair/packer_*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "UseBuildVpc",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:vpc/vpc-0e54efb692e4f3ee6"
+    },
+    {
+      "Sid": "BuildSg",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "UseAmazonAmi",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1::image/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:Owner": "137112412989"
+        }
+      }
+    },
+    {
+      "Sid": "Subnet",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:subnet/subnet-015304a4430329088"
+    },
+    {
+      "Sid": "Network",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:us-east-1:582920575154:key-pair/packer_*",
+        "arn:aws:ec2:us-east-1:582920575154:security-group/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "Instance",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build",
+          "ec2:InstanceType": [
+            "t3.medium",
+            "t4g.medium"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "Interface",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:network-interface/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "Volume",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:volume/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build-temporary"
+        }
+      }
+    },
+    {
+      "Sid": "SgOps",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:DeleteSecurityGroup"
+      ],
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "KeyCleanup",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteKeyPair",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:key-pair/packer_*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "InstanceOps",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:ModifyInstanceAttribute",
+        "ec2:StopInstances",
+        "ec2:TerminateInstances"
+      ],
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "ImageSource",
+      "Effect": "Allow",
+      "Action": "ec2:CreateImage",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "ImageCreate",
+      "Effect": "Allow",
+      "Action": "ec2:CreateImage",
+      "Resource": [
+        "arn:aws:ec2:us-east-1::image/*",
+        "arn:aws:ec2:us-east-1::snapshot/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "ImageModify",
+      "Effect": "Allow",
+      "Action": "ec2:ModifyImageAttribute",
+      "Resource": "arn:aws:ec2:us-east-1::image/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "TagCreate",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": [
+        "arn:aws:ec2:us-east-1:582920575154:key-pair/packer_*",
+        "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+        "arn:aws:ec2:us-east-1:582920575154:instance/*",
+        "arn:aws:ec2:us-east-1:582920575154:network-interface/*",
+        "arn:aws:ec2:us-east-1::image/*",
+        "arn:aws:ec2:us-east-1::snapshot/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ec2:CreateAction": [
+            "CreateImage",
+            "CreateKeyPair",
+            "CreateSecurityGroup",
+            "RunInstances"
+          ],
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "TagVolume",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:volume/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:CreateAction": "RunInstances",
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ami-build-temporary"
+        }
+      }
+    },
+    {
+      "Sid": "TagImage",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": [
+        "arn:aws:ec2:us-east-1::image/*",
+        "arn:aws:ec2:us-east-1::snapshot/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ami-build"
+        }
+      }
+    },
+    {
+      "Sid": "NoMarketplace",
+      "Effect": "Deny",
+      "Action": "aws-marketplace:*",
+      "Resource": "*"
+    }
+  ]
+}

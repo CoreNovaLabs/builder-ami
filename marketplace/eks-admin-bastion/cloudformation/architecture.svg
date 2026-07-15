@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">CoreNova EKS Admin Bastion private SSM architecture</title>
+  <desc id="desc">A trusted administrator connects through AWS Systems Manager to a CoreNova EKS Admin Bastion EC2 instance in a private subnet. The instance has no public IP and its security group has no inbound rules. A scoped instance role and EKS Access Entry permit access to an existing EKS cluster.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .title { font: 700 34px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .section { font: 700 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1e3a8a; }
+      .box-title { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .body { font: 400 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .small { font: 400 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .label { font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1d4ed8; }
+      .badge { font: 700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #166534; }
+      .line { stroke: #2563eb; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 10 8; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#f8fafc"/>
+  <text x="60" y="65" class="title">CoreNova EKS Admin Bastion — private SSM-first deployment</text>
+  <text x="60" y="98" class="subtitle">CloudFormation delivery option: one private EC2 administration host for an existing Amazon EKS cluster</text>
+
+  <rect x="455" y="130" width="1085" height="650" rx="26" fill="#eff6ff" stroke="#60a5fa" stroke-width="3"/>
+  <text x="490" y="170" class="section">Customer VPC</text>
+
+  <rect x="500" y="195" width="990" height="520" rx="22" fill="#ffffff" stroke="#94a3b8" stroke-width="2.5" class="dash"/>
+  <text x="535" y="235" class="section">Private subnet — NAT gateway or VPC endpoints for required AWS APIs</text>
+
+  <rect x="55" y="285" width="330" height="205" rx="20" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" filter="url(#shadow)"/>
+  <circle cx="115" cy="350" r="32" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <path d="M96 354 h38 M105 340 l-9 14 9 14 M125 340 l9 14-9 14" fill="none" stroke="#2563eb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="165" y="330" class="box-title">Trusted administrator</text>
+  <text x="165" y="362" class="body">AWS CLI v2</text>
+  <text x="165" y="390" class="body">Session Manager plugin</text>
+  <text x="85" y="443" class="small">Authorized by the buyer's IAM policy</text>
+  <text x="85" y="468" class="small">No direct network path to the host</text>
+
+  <rect x="555" y="285" width="270" height="155" rx="18" fill="#fff7ed" stroke="#fb923c" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="590" y="325" class="box-title">AWS Systems Manager</text>
+  <text x="590" y="357" class="body">Session Manager</text>
+  <text x="590" y="384" class="body">SSM messaging channels</text>
+  <text x="590" y="416" class="small">Outbound HTTPS from the instance</text>
+
+  <rect x="915" y="265" width="500" height="315" rx="22" fill="#f0fdf4" stroke="#22c55e" stroke-width="3" filter="url(#shadow)"/>
+  <text x="955" y="310" class="box-title">CoreNova EKS Admin Bastion</text>
+  <text x="955" y="342" class="body">Amazon Linux 2023 EC2 instance</text>
+  <rect x="955" y="368" width="420" height="45" rx="12" fill="#dcfce7"/>
+  <text x="975" y="397" class="badge">No public IPv4 • Security group has 0 inbound rules</text>
+  <text x="955" y="447" class="body">Amazon SSM Agent</text>
+  <text x="955" y="475" class="body">AWS CLI, kubectl, Helm, eksctl, k9s</text>
+  <text x="955" y="503" class="body">IMDSv2 required • hop limit 1</text>
+  <text x="955" y="531" class="body">Encrypted gp3 root volume</text>
+  <text x="955" y="558" class="small">All shell sessions share the EC2 instance role</text>
+
+  <rect x="555" y="520" width="270" height="155" rx="18" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="590" y="560" class="box-title">Buyer-controlled access</text>
+  <text x="590" y="592" class="body">EC2 instance role</text>
+  <text x="590" y="619" class="body">EKS Access Entry</text>
+  <text x="590" y="646" class="small">View policy is the default</text>
+
+  <rect x="915" y="625" width="500" height="115" rx="18" fill="#ecfeff" stroke="#06b6d4" stroke-width="2.5" filter="url(#shadow)"/>
+  <text x="955" y="670" class="box-title">Existing Amazon EKS cluster</text>
+  <text x="955" y="703" class="body">Private or public API endpoint • TCP 443 from bastion as needed</text>
+
+  <path d="M385 365 C455 365 470 362 555 362" class="line"/>
+  <text x="405" y="342" class="label">StartSession</text>
+  <path d="M825 362 C865 362 870 388 915 388" class="line"/>
+  <text x="825" y="255" class="label">SSM control/data channel</text>
+  <path d="M825 597 C865 597 870 650 915 650" class="line"/>
+  <text x="825" y="575" class="label">IAM authorization</text>
+  <path d="M1165 580 L1165 625" class="line"/>
+  <text x="1185" y="608" class="label">HTTPS 443</text>
+
+  <rect x="55" y="805" width="1485" height="58" rx="16" fill="#0f172a"/>
+  <text x="85" y="841" style="font: 600 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #ffffff;">Security boundary:</text>
+  <text x="240" y="841" style="font: 400 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #e2e8f0;">Session Manager access is limited to trusted administrators; every session can use the shared instance-role credentials.</text>
+</svg>

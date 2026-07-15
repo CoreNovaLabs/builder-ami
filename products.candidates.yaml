@@ -1,0 +1,109 @@
+aws:
+  region: us-east-1
+  marketplace_catalog: AWSMarketplace
+  seller_account_id: "582920575154"
+  build_subnet_id: subnet-015304a4430329088
+  marketplace_access_role_name: CoreNovaMarketplaceAmiIngestion
+  logo_url: "https://awsmp-logos.s3.amazonaws.com/b9dc6b1ff1ede90a60c4138955b554f7"
+  support_email: support@corenovacloud.com
+  support_url: https://www.corenovacloud.com/en/support/
+  security_url: https://www.corenovacloud.com/en/security/
+  eks_admin_bastion_url: https://www.corenovacloud.com/en/eks-admin-bastion/
+  eks_admin_bastion_x86_url: https://aws.amazon.com/marketplace/pp/prodview-htrkldexsrevo
+  eks_admin_bastion_arm_url: https://aws.amazon.com/marketplace/pp/prodview-efbisuk5f3bfw
+  seller_profile_url: https://aws.amazon.com/marketplace/seller-profile?id=seller-kbf3ztbtbdc5o
+  related_amazon_linux_2023_url: https://aws.amazon.com/marketplace/pp/prodview-gricbzzlztsae
+  refund_policy: "Eligible requests for a refund of AWS Marketplace software fees may be submitted within 30 days. Live Marketplace offer terms govern. AWS infrastructure charges are excluded and are not refundable by the seller."
+
+products:
+  - key: eks-admin-bastion-al2023-x86_64
+    title: "CoreNova SSM EKS Admin Bastion AMI (Amazon Linux 2023, x86_64)"
+    entity_id: prod-hapxotc2y7jmi
+    visibility: Public
+    profile: eks-admin-bastion
+    architecture: x86_64
+    operating_system_name: AMAZONLINUX
+    operating_system_version: "Amazon Linux 2023"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/xvda
+    root_volume_size: 20
+    layout: root-xfs
+    filesystem: xfs
+    recommended_instance_type: t3.small
+    build_instance_type: t3.medium
+    pricing_hourly_usd: "0.04"
+    categories:
+      - Operating Systems
+      - Security
+    search_keywords:
+      - EKS bastion host
+      - AWS Systems Manager
+      - Kubernetes admin workstation
+    targeting_buyer_accounts:
+      - "155422166461"
+      - "297512042063"
+      - "100458166471"
+      - "782858285006"
+      - "582920575154"
+      - "058264185180"
+    instance_types:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3a.micro
+      - t3a.small
+      - t3a.medium
+      - t3a.large
+      - m6i.large
+      - m7i.large
+      - c6i.large
+      - c7i.large
+    source_ami:
+      ssm_parameter: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  - key: eks-admin-bastion-al2023-arm64
+    title: "CoreNova SSM EKS Admin Bastion AMI (Amazon Linux 2023, Graviton ARM64)"
+    entity_id: prod-nspz2g6ki6qvo
+    visibility: Public
+    profile: eks-admin-bastion
+    architecture: arm64
+    operating_system_name: AMAZONLINUX
+    operating_system_version: "Amazon Linux 2023"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/xvda
+    root_volume_size: 20
+    layout: root-xfs
+    filesystem: xfs
+    recommended_instance_type: t4g.small
+    build_instance_type: t4g.medium
+    pricing_hourly_usd: "0.04"
+    categories:
+      - Operating Systems
+      - Security
+    search_keywords:
+      - EKS bastion host
+      - AWS Systems Manager
+      - Kubernetes admin workstation
+    targeting_buyer_accounts:
+      - "155422166461"
+      - "297512042063"
+      - "100458166471"
+      - "782858285006"
+      - "582920575154"
+      - "058264185180"
+    instance_types:
+      - t4g.micro
+      - t4g.small
+      - t4g.medium
+      - t4g.large
+      - m6g.medium
+      - m6g.large
+      - m7g.medium
+      - m7g.large
+      - c6g.large
+      - c7g.large
+    source_ami:
+      ssm_parameter: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64

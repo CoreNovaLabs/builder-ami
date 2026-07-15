@@ -1,0 +1,67 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadCost",
+      "Effect": "Allow",
+      "Action": [
+        "ce:GetCostAndUsage",
+        "ce:GetCostForecast"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadSellerInfrastructure",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeAddresses",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstances",
+        "ec2:DescribeNatGateways",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeRegions",
+        "ec2:DescribeSnapshots",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeVpcEndpoints"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "ReadEksProducts",
+      "Effect": "Allow",
+      "Action": "aws-marketplace:DescribeEntity",
+      "Resource": [
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/AmiProduct/prod-hapxotc2y7jmi",
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/AmiProduct/prod-nspz2g6ki6qvo"
+      ]
+    },
+    {
+      "Sid": "ListChangeSets",
+      "Effect": "Allow",
+      "Action": "aws-marketplace:ListChangeSets",
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeChangeSets",
+      "Effect": "Allow",
+      "Action": "aws-marketplace:DescribeChangeSet",
+      "Resource": "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/ChangeSet/*"
+    },
+    {
+      "Sid": "SearchSellerAgreements",
+      "Effect": "Allow",
+      "Action": "aws-marketplace:SearchAgreements",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws-marketplace:PartyType": "Proposer"
+        }
+      }
+    }
+  ]
+}

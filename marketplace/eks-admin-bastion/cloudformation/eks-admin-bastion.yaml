@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CoreNova EKS Admin Bastion - SSM-first private administration host for Amazon EKS.
+
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: CoreNova EKS Admin Bastion AMI ID in this Region.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where the bastion security group will be created.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Private subnet in the EKS cluster VPC. It needs NAT or VPC endpoints for SSM and AWS APIs.
+  ClusterName:
+    Type: String
+    MinLength: 1
+    MaxLength: 100
+    AllowedPattern: '^[0-9A-Za-z][A-Za-z0-9_-]*$'
+    Description: Existing EKS cluster to seed with access for the bastion instance role.
+  CreateEksAccessEntry:
+    Type: String
+    Default: 'Yes'
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+    Description: Create an EKS Access Entry. The cluster authentication mode must be API or API_AND_CONFIG_MAP.
+  EksAccessPolicyName:
+    Type: String
+    Default: AmazonEKSViewPolicy
+    AllowedValues:
+      - AmazonEKSViewPolicy
+      - AmazonEKSEditPolicy
+      - AmazonEKSAdminPolicy
+      - AmazonEKSClusterAdminPolicy
+    Description: EKS access policy granted cluster-wide to the shared bastion instance role. View is the read-only default.
+  CreateClusterSecurityGroupIngress:
+    Type: String
+    Default: 'No'
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+    Description: Add TCP 443 ingress from the bastion security group to the existing EKS cluster security group.
+  ClusterSecurityGroupId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^sg-[0-9a-f]+$'
+    Description: Existing EKS cluster security group ID. Required when CreateClusterSecurityGroupIngress is Yes.
+  InstanceType:
+    Type: String
+    AllowedPattern: '^[a-z0-9-]+\.[a-z0-9]+$'
+    Description: EC2 instance type compatible with the AMI architecture, for example t3.small for x86_64 or t4g.small for ARM64.
+  RootVolumeSize:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    Description: Root EBS volume size in GiB.
+
+Rules:
+  RequireClusterSecurityGroup:
+    RuleCondition: !Equals [!Ref CreateClusterSecurityGroupIngress, 'Yes']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ClusterSecurityGroupId, '']]
+        AssertDescription: ClusterSecurityGroupId is required when CreateClusterSecurityGroupIngress is Yes.
+
+Conditions:
+  ShouldCreateEksAccessEntry: !Equals [!Ref CreateEksAccessEntry, 'Yes']
+  ShouldCreateClusterSecurityGroupIngress: !Equals [!Ref CreateClusterSecurityGroupIngress, 'Yes']
+
+Resources:
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CoreNova EKS Admin Bastion - no inbound access; use SSM Session Manager.
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: corenova-eks-admin-bastion
+
+  BastionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: corenova-eks-admin-discovery
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EksDiscovery
+                Effect: Allow
+                Action:
+                  - eks:ListClusters
+                Resource: '*'
+              - Sid: EksClusterDiscovery
+                Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListAccessEntries
+                  - eks:DescribeAccessEntry
+                  - eks:ListAssociatedAccessPolicies
+                Resource: !Sub arn:${AWS::Partition}:eks:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}
+              - Sid: CallerIdentity
+                Effect: Allow
+                Action: sts:GetCallerIdentity
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: corenova-eks-admin-bastion
+
+  BastionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BastionRole
+
+  BastionEksAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Condition: ShouldCreateEksAccessEntry
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt BastionRole.Arn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: !Sub arn:${AWS::Partition}:eks::aws:cluster-access-policy/${EksAccessPolicyName}
+          AccessScope:
+            Type: cluster
+      Tags:
+        - Key: Name
+          Value: corenova-eks-admin-bastion
+        - Key: ManagedBy
+          Value: cloudformation
+
+  ClusterApiIngressFromBastion:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: ShouldCreateClusterSecurityGroupIngress
+    Properties:
+      GroupId: !Ref ClusterSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt BastionSecurityGroup.GroupId
+      Description: HTTPS from CoreNova EKS Admin Bastion to the EKS cluster API endpoint
+
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref BastionInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref BastionSecurityGroup
+          SubnetId: !Ref SubnetId
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref RootVolumeSize
+            Encrypted: true
+            DeleteOnTermination: true
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      Tags:
+        - Key: Name
+          Value: corenova-eks-admin-bastion
+        - Key: ManagedBy
+          Value: cloudformation
+        - Key: Product
+          Value: CoreNova EKS Admin Bastion
+
+Outputs:
+  InstanceId:
+    Description: EKS admin bastion EC2 instance ID.
+    Value: !Ref BastionInstance
+  StartSessionCommand:
+    Description: AWS CLI command to start a Session Manager shell.
+    Value: !Sub aws ssm start-session --target ${BastionInstance}
+  SecurityGroupId:
+    Description: Security group with no inbound rules.
+    Value: !Ref BastionSecurityGroup
+  InstanceRoleArn:
+    Description: Shared IAM role used by all shell sessions on this bastion. Grant Session Manager access only to trusted administrators.
+    Value: !GetAtt BastionRole.Arn
+  EksAccessEntryCreated:
+    Description: Whether this stack created an EKS Access Entry for the instance role.
+    Value: !Ref CreateEksAccessEntry

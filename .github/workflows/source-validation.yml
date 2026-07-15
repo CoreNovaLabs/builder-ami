@@ -1,0 +1,82 @@
+name: Source validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Scan source for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: Install hash-locked Python and Ansible dependencies
+        run: |
+          python -m pip install --require-hashes --requirement requirements.lock
+          ansible-galaxy collection install --requirements-file ansible/requirements.yml
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+        with:
+          version: "1.15.4"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Validate source and guardrails
+        run: |
+          python -m compileall -q scripts
+          find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          find marketplace -type f -name '*.json' -print0 | xargs -0 -n1 jq empty
+          python scripts/validate_iam_boundaries.py
+          CORENOVA_PRODUCTS_FILE=products.candidates.yaml python scripts/list_allowed_products.py --offline
+          packer fmt -check packer/marketplace-ami.pkr.hcl
+          packer init packer/marketplace-ami.pkr.hcl
+          packer validate \
+            -var region=us-east-1 \
+            -var product_key=eks-admin-bastion-al2023-x86_64 \
+            -var 'product_title=CoreNova validation' \
+            -var source_ami_id=ami-00000000000000000 \
+            -var ssh_username=ec2-user \
+            -var architecture=x86_64 \
+            -var layout=root-xfs \
+            -var filesystem=xfs \
+            -var version_title=v20990101 \
+            -var product_profile=eks-admin-bastion \
+            -var build_instance_type=t3.medium \
+            -var root_device_name=/dev/xvda \
+            -var root_volume_size=20 \
+            -var build_subnet_id=subnet-015304a4430329088 \
+            packer/marketplace-ami.pkr.hcl
+          terraform -chdir=infra/terraform/eks-admin-bastion-operator-roles init -backend=false -input=false
+          terraform -chdir=infra/terraform/eks-admin-bastion-operator-roles fmt -check
+          terraform -chdir=infra/terraform/eks-admin-bastion-operator-roles validate

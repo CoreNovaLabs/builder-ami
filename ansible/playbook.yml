@@ -1,0 +1,6 @@
+- name: Build CoreNova Marketplace AMI
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: core

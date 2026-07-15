@@ -1,0 +1,433 @@
+- name: Install EKS admin dependency packages on RedHat family
+  ansible.builtin.dnf:
+    name:
+      - bash-completion
+      - git
+      - gzip
+      - jq
+      - less
+      - lsof
+      - tar
+      - tmux
+      - unzip
+      - vim-minimal
+      - wget
+      - which
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install amazon-ssm-agent package on RedHat family
+  ansible.builtin.dnf:
+    name: amazon-ssm-agent
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Enable Amazon SSM Agent
+  ansible.builtin.service:
+    name: amazon-ssm-agent
+    enabled: true
+    state: started
+
+- name: Verify Amazon SSM Agent is enabled and running
+  ansible.builtin.command: systemctl is-enabled --quiet amazon-ssm-agent
+  changed_when: false
+
+- name: Verify Amazon SSM Agent is active
+  ansible.builtin.command: systemctl is-active --quiet amazon-ssm-agent
+  changed_when: false
+
+- name: Create CoreNova EKS directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/corenova/eks-admin-bastion
+    - /etc/motd.d
+    - /opt/corenova/eks
+    - /opt/corenova/eks/bin
+    - /opt/corenova/eks/examples
+
+- name: Write EKS admin tool installer
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/corenova-install-eks-admin-tools
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+      umask 022
+
+      tmp_root="$(mktemp -d)"
+      trap 'rm -rf "$tmp_root"' EXIT
+
+      arch="$(uname -m)"
+      case "$arch" in
+        x86_64)
+          k8s_arch="amd64"
+          awscli_arch="x86_64"
+          kubectx_arch="x86_64"
+          ;;
+        aarch64|arm64)
+          k8s_arch="arm64"
+          awscli_arch="aarch64"
+          kubectx_arch="arm64"
+          ;;
+        *)
+          echo "Unsupported architecture: $arch" >&2
+          exit 1
+          ;;
+      esac
+
+      curl_retry() {
+        curl --fail --show-error --location --retry 4 --retry-delay 2 "$@"
+      }
+
+      verify_checksum() {
+        local checksum_file="$1"
+        local asset_path="$2"
+        local asset_name="${3:-$(basename "$asset_path")}"
+        local expected
+        expected="$(awk -v name="$asset_name" '$NF == name {print $1; exit}' "$checksum_file")"
+        if [ -z "$expected" ]; then
+          echo "No checksum found for ${asset_name}" >&2
+          exit 1
+        fi
+        echo "${expected}  ${asset_path}" | sha256sum --check -
+        printf '%s  %s\n' "$expected" "$asset_name" >>/etc/corenova/eks-admin-bastion/source-artifact-sha256.txt
+      }
+
+      install -d -m 0755 /opt/corenova/eks/bin /opt/corenova/eks/examples /etc/corenova/eks-admin-bastion
+      : >/etc/corenova/eks-admin-bastion/source-artifact-sha256.txt
+
+      if ! aws --version 2>&1 | grep -q 'aws-cli/2'; then
+        awscli_version="${CORENOVA_AWSCLI_VERSION:-2.33.13}"
+        work="$tmp_root/awscli"
+        mkdir -p "$work"
+        curl_retry --silent --output "$work/awscliv2.zip" \
+          "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}-${awscli_version}.zip"
+        unzip -q "$work/awscliv2.zip" -d "$work"
+        "$work/aws/install" --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+      fi
+
+      latest_kubectl=""
+      for minor in ${CORENOVA_KUBECTL_MINORS:-1.30 1.31 1.32 1.33 1.34 1.35 1.36}; do
+        version="$(curl_retry --silent "https://dl.k8s.io/release/stable-${minor}.txt")"
+        target="/opt/corenova/eks/bin/kubectl-${version}"
+        if [ ! -x "$target" ]; then
+          bin_path="$tmp_root/kubectl-${version}"
+          sha_path="$tmp_root/kubectl-${version}.sha256"
+          curl_retry --silent --output "$bin_path" \
+            "https://dl.k8s.io/release/${version}/bin/linux/${k8s_arch}/kubectl"
+          curl_retry --silent --output "$sha_path" \
+            "https://dl.k8s.io/release/${version}/bin/linux/${k8s_arch}/kubectl.sha256"
+          echo "$(cat "$sha_path")  $bin_path" | sha256sum --check -
+          install -m 0755 "$bin_path" "$target"
+        fi
+        latest_kubectl="$target"
+      done
+      ln -sfn "$latest_kubectl" /usr/local/bin/kubectl
+
+      helm_tag="${CORENOVA_HELM_VERSION:-v3.21.2}"
+      helm_work="$tmp_root/helm"
+      mkdir -p "$helm_work"
+      curl_retry --silent --output "$helm_work/helm.tar.gz" \
+        "https://get.helm.sh/helm-${helm_tag}-linux-${k8s_arch}.tar.gz"
+      curl_retry --silent --output "$helm_work/checksums.txt" \
+        "https://get.helm.sh/helm-${helm_tag}-linux-${k8s_arch}.tar.gz.sha256sum"
+      verify_checksum "$helm_work/checksums.txt" "$helm_work/helm.tar.gz" \
+        "helm-${helm_tag}-linux-${k8s_arch}.tar.gz"
+      tar -xzf "$helm_work/helm.tar.gz" -C "$helm_work"
+      install -m 0755 "$helm_work/linux-${k8s_arch}/helm" /usr/local/bin/helm
+
+      eksctl_tag="${CORENOVA_EKSCTL_VERSION:-v0.229.0}"
+      eksctl_work="$tmp_root/eksctl"
+      mkdir -p "$eksctl_work"
+      curl_retry --silent --output "$eksctl_work/eksctl.tar.gz" \
+        "https://github.com/eksctl-io/eksctl/releases/download/${eksctl_tag}/eksctl_Linux_${k8s_arch}.tar.gz"
+      curl_retry --silent --output "$eksctl_work/checksums.txt" \
+        "https://github.com/eksctl-io/eksctl/releases/download/${eksctl_tag}/eksctl_checksums.txt"
+      verify_checksum "$eksctl_work/checksums.txt" "$eksctl_work/eksctl.tar.gz" \
+        "eksctl_Linux_${k8s_arch}.tar.gz"
+      tar -xzf "$eksctl_work/eksctl.tar.gz" -C "$eksctl_work"
+      install -m 0755 "$eksctl_work/eksctl" /usr/local/bin/eksctl
+
+      k9s_tag="${CORENOVA_K9S_VERSION:-v0.51.0}"
+      k9s_work="$tmp_root/k9s"
+      mkdir -p "$k9s_work"
+      curl_retry --silent --output "$k9s_work/k9s.tar.gz" \
+        "https://github.com/derailed/k9s/releases/download/${k9s_tag}/k9s_Linux_${k8s_arch}.tar.gz"
+      curl_retry --silent --output "$k9s_work/checksums.txt" \
+        "https://github.com/derailed/k9s/releases/download/${k9s_tag}/checksums.sha256"
+      verify_checksum "$k9s_work/checksums.txt" "$k9s_work/k9s.tar.gz" \
+        "k9s_Linux_${k8s_arch}.tar.gz"
+      tar -xzf "$k9s_work/k9s.tar.gz" -C "$k9s_work"
+      install -m 0755 "$k9s_work/k9s" /usr/local/bin/k9s
+
+      yq_tag="${CORENOVA_YQ_VERSION:-v4.53.3}"
+      yq_work="$tmp_root/yq"
+      mkdir -p "$yq_work"
+      curl_retry --silent --output "$yq_work/yq_linux_${k8s_arch}" \
+        "https://github.com/mikefarah/yq/releases/download/${yq_tag}/yq_linux_${k8s_arch}"
+      case "$k8s_arch" in
+        amd64) yq_sha256="${CORENOVA_YQ_SHA256_AMD64:-fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4}" ;;
+        arm64) yq_sha256="${CORENOVA_YQ_SHA256_ARM64:-578648e463a11c1b6db6010cbf41eafed6bee79466fcffa1bb446672cf7945ea}" ;;
+      esac
+      echo "${yq_sha256}  $yq_work/yq_linux_${k8s_arch}" | sha256sum --check -
+      printf '%s  %s\n' "$yq_sha256" "yq_linux_${k8s_arch}" \
+        >>/etc/corenova/eks-admin-bastion/source-artifact-sha256.txt
+      install -m 0755 "$yq_work/yq_linux_${k8s_arch}" /usr/local/bin/yq
+
+      kubectx_tag="${CORENOVA_KUBECTX_VERSION:-v0.11.0}"
+      kubectx_work="$tmp_root/kubectx"
+      mkdir -p "$kubectx_work"
+      curl_retry --silent --output "$kubectx_work/kubectx.tar.gz" \
+        "https://github.com/ahmetb/kubectx/releases/download/${kubectx_tag}/kubectx_${kubectx_tag}_linux_${kubectx_arch}.tar.gz"
+      curl_retry --silent --output "$kubectx_work/kubens.tar.gz" \
+        "https://github.com/ahmetb/kubectx/releases/download/${kubectx_tag}/kubens_${kubectx_tag}_linux_${kubectx_arch}.tar.gz"
+      curl_retry --silent --output "$kubectx_work/checksums.txt" \
+        "https://github.com/ahmetb/kubectx/releases/download/${kubectx_tag}/checksums.txt"
+      verify_checksum "$kubectx_work/checksums.txt" "$kubectx_work/kubectx.tar.gz" \
+        "kubectx_${kubectx_tag}_linux_${kubectx_arch}.tar.gz"
+      verify_checksum "$kubectx_work/checksums.txt" "$kubectx_work/kubens.tar.gz" \
+        "kubens_${kubectx_tag}_linux_${kubectx_arch}.tar.gz"
+      tar -xzf "$kubectx_work/kubectx.tar.gz" -C "$kubectx_work"
+      tar -xzf "$kubectx_work/kubens.tar.gz" -C "$kubectx_work"
+      install -m 0755 "$kubectx_work/kubectx" /usr/local/bin/kubectx
+      install -m 0755 "$kubectx_work/kubens" /usr/local/bin/kubens
+
+      cat >/usr/local/bin/kubectl-select <<'SELECT_EOF'
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      if [ "$#" -ne 1 ]; then
+        echo "usage: kubectl-select <1.30|...|1.36|v1.36.0>" >&2
+        echo "available:" >&2
+        ls -1 /opt/corenova/eks/bin/kubectl-v* 2>/dev/null | sed 's#.*/kubectl-#  #' >&2 || true
+        exit 2
+      fi
+
+      requested="$1"
+      case "$requested" in
+        v*) pattern="$requested" ;;
+        *) pattern="v$requested" ;;
+      esac
+
+      candidate="$(ls -1 /opt/corenova/eks/bin/kubectl-"${pattern}"* 2>/dev/null | sort -V | tail -1 || true)"
+      if [ -z "$candidate" ]; then
+        echo "No kubectl binary found for ${requested}" >&2
+        exit 1
+      fi
+
+      install -d -m 0755 "$HOME/.local/bin"
+      ln -sfn "$candidate" "$HOME/.local/bin/kubectl"
+      echo "$HOME/.local/bin/kubectl -> $candidate"
+      SELECT_EOF
+      chmod 0755 /usr/local/bin/kubectl-select
+
+      cat >/usr/local/bin/corenova-eks-check <<'CHECK_EOF'
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      echo "CoreNova EKS Admin Bastion local diagnostic"
+      echo
+
+      failed=0
+      for tool in aws kubectl helm eksctl k9s kubectx kubens jq yq git tmux; do
+        if command -v "$tool" >/dev/null 2>&1; then
+          printf 'OK\t%s\t%s\n' "$tool" "$(command -v "$tool")"
+        else
+          printf 'MISSING\t%s\n' "$tool" >&2
+          failed=1
+        fi
+      done
+
+      echo
+      aws --version 2>&1 || true
+      kubectl version --client=true --output=yaml || true
+      helm version --short || true
+      eksctl version || true
+      if systemctl is-active --quiet amazon-ssm-agent; then
+        printf 'OK\t%s\n' amazon-ssm-agent
+      else
+        printf 'INACTIVE\t%s\n' amazon-ssm-agent >&2
+        failed=1
+      fi
+      exit "$failed"
+      CHECK_EOF
+      chmod 0755 /usr/local/bin/corenova-eks-check
+
+      {
+        echo "build_date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "architecture=${arch}"
+        echo "aws_cli=$(aws --version 2>&1 || true)"
+        echo "helm=$(helm version --short 2>/dev/null || true)"
+        echo "eksctl=$(eksctl version 2>/dev/null || true)"
+        echo "k9s=$(k9s version --short 2>/dev/null | tr '\n' ' ' || true)"
+        echo "yq=$(yq --version 2>/dev/null || true)"
+        for kubectl_bin in /opt/corenova/eks/bin/kubectl-v*; do
+          [ -x "$kubectl_bin" ] || continue
+          echo "kubectl=$(basename "$kubectl_bin")"
+        done
+      } >/etc/corenova/eks-admin-bastion/tool-versions.txt
+
+      for tool in aws kubectl helm eksctl k9s kubectx kubens yq; do
+        tool_path="$(command -v "$tool")"
+        sha256sum "$tool_path"
+      done >/etc/corenova/eks-admin-bastion/installed-tool-sha256.txt
+
+- name: Install EKS admin tools
+  ansible.builtin.command: /usr/local/sbin/corenova-install-eks-admin-tools
+  args:
+    creates: /etc/corenova/eks-admin-bastion/tool-versions.txt
+  changed_when: true
+
+- name: Verify required EKS administration tools and SSM Agent
+  ansible.builtin.command: /usr/local/bin/corenova-eks-check
+  changed_when: false
+
+- name: Write EKS admin shell profile
+  ansible.builtin.copy:
+    dest: /etc/profile.d/corenova-eks-admin.sh
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      export PATH="$HOME/.local/bin:$PATH"
+      export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+      export AWS_PAGER=""
+      alias k=kubectl
+      if [ -n "$BASH_VERSION" ]; then
+        source /etc/bash_completion 2>/dev/null || true
+        complete -o default -F __start_kubectl k 2>/dev/null || true
+      fi
+
+- name: Write EKS admin MOTD
+  ansible.builtin.copy:
+    dest: /etc/motd.d/10-corenova-eks-admin-bastion
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      CoreNova EKS Admin Bastion
+
+      Recommended access: AWS Systems Manager Session Manager.
+      Install the Session Manager plugin on the operator workstation before connecting.
+      Start with:
+        corenova-eks-check
+        aws eks update-kubeconfig --region <region> --name <cluster>
+        kubectl get nodes
+
+      Examples and IAM templates:
+        /opt/corenova/eks/examples
+
+- name: Write starter EKS discovery IAM policy example
+  ansible.builtin.copy:
+    dest: /opt/corenova/eks/examples/eks-discovery-instance-policy.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "EksReadAndKubeconfigDiscovery",
+            "Effect": "Allow",
+            "Action": [
+              "eks:DescribeCluster",
+              "eks:ListClusters",
+              "eks:ListAccessEntries",
+              "eks:DescribeAccessEntry",
+              "eks:ListAssociatedAccessPolicies"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Sid": "AllowCallerIdentity",
+            "Effect": "Allow",
+            "Action": "sts:GetCallerIdentity",
+            "Resource": "*"
+          }
+        ]
+      }
+
+- name: Write EKS access entry example
+  ansible.builtin.copy:
+    dest: /opt/corenova/eks/examples/create-eks-access-entry-example.sh
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      : "${CLUSTER_NAME:?set CLUSTER_NAME}"
+      : "${PRINCIPAL_ARN:?set PRINCIPAL_ARN to the IAM role or user ARN}"
+      : "${AWS_REGION:?set AWS_REGION}"
+
+      aws eks create-access-entry \
+        --region "$AWS_REGION" \
+        --cluster-name "$CLUSTER_NAME" \
+        --principal-arn "$PRINCIPAL_ARN" \
+        --type STANDARD
+
+      aws eks associate-access-policy \
+        --region "$AWS_REGION" \
+        --cluster-name "$CLUSTER_NAME" \
+        --principal-arn "$PRINCIPAL_ARN" \
+        --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy \
+        --access-scope type=cluster
+
+- name: Write EKS admin quickstart
+  ansible.builtin.copy:
+    dest: /opt/corenova/eks/README.md
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # CoreNova EKS Admin Bastion
+
+      This AMI is designed as an SSM-first administration host for Amazon EKS.
+
+      ## First checks
+
+      ```bash
+      corenova-eks-check
+      aws sts get-caller-identity
+      aws eks list-clusters --region us-east-1
+      ```
+
+      The operator workstation that starts the session must have the AWS CLI and
+      Session Manager plugin installed. This AMI provides the managed-node SSM Agent.
+
+      ## Connect to a cluster
+
+      ```bash
+      aws eks update-kubeconfig --region us-east-1 --name CLUSTER_NAME
+      kubectl get nodes
+      ```
+
+      Before running kubectl, make sure the instance-role ARN has an EKS Access Entry,
+      the access entry has the intended access policy, and the instance can reach the
+      cluster API endpoint on TCP 443.
+
+      Anyone who can start a Session Manager shell on this instance can use the EC2
+      instance-role credentials and gain the EKS permissions assigned to that role.
+      Treat Session Manager access as a trusted-administrator boundary.
+
+      ## kubectl version selection
+
+      Multiple kubectl minor versions are installed under `/opt/corenova/eks/bin`.
+
+      ```bash
+      kubectl-select 1.36
+      kubectl version --client=true
+      ```
+
+      Keep kubectl within one minor version of the Kubernetes control plane.

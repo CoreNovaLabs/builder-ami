@@ -1,0 +1,201 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSmokeTestState",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeImages",
+        "ec2:DescribeInstances",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ssm:DescribeInstanceInformation",
+        "ssm:GetCommandInvocation"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "UseVpcForTaggedSmokeSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:vpc/vpc-0e54efb692e4f3ee6",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "CreateTaggedSmokeSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "UseCandidateImage",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1::image/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "ec2:Owner": "582920575154",
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Marketplace": "candidate"
+        }
+      }
+    },
+    {
+      "Sid": "UseSmokeSubnet",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:subnet/subnet-015304a4430329088",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "UseTaggedSmokeSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "RunTaggedSmokeInstance",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ssm-smoke-test",
+          "ec2:InstanceType": [
+            "t3.small",
+            "t4g.small"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "RunTaggedSmokeNetworkAndVolume",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:us-east-1:582920575154:network-interface/*",
+        "arn:aws:ec2:us-east-1:582920575154:volume/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "TagOnlyDuringSmokeResourceCreation",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": [
+        "arn:aws:ec2:us-east-1:582920575154:instance/*",
+        "arn:aws:ec2:us-east-1:582920575154:network-interface/*",
+        "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+        "arn:aws:ec2:us-east-1:582920575154:volume/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "ec2:CreateAction": [
+            "CreateSecurityGroup",
+            "RunInstances"
+          ],
+          "aws:RequestTag/Project": "builder-ami",
+          "aws:RequestTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "TerminateOnlyTaggedSmokeInstances",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "DeleteOnlyTaggedSmokeSecurityGroups",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:security-group/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "ec2:ResourceTag/Project": "builder-ami",
+          "ec2:ResourceTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "UseOnlyAwsRunShellScript",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:us-east-1::document/AWS-RunShellScript"
+    },
+    {
+      "Sid": "SendCommandsOnlyToTaggedSmokeInstances",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ssm:resourceTag/Project": "builder-ami",
+          "ssm:resourceTag/Purpose": "ssm-smoke-test"
+        }
+      }
+    },
+    {
+      "Sid": "PassOnlySmokeInstanceRoleToEc2",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::582920575154:role/CoreNovaEksBastionSmokeInstanceRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "DenyMarketplaceControlPlane",
+      "Effect": "Deny",
+      "Action": "aws-marketplace:*",
+      "Resource": "*"
+    }
+  ]
+}
