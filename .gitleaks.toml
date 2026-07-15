@@ -1,0 +1,11 @@
+title = "CoreNova builder-ami secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret Rocky Linux product identifiers"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^products\.yaml$''']
+regexes = ['''^\s*-\s+key:\s+rocky-9-(?:arm64|x86_64)-lvm-xfs\s*$''']
