@@ -9,22 +9,62 @@ import binascii
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any, Sequence
 from urllib.parse import urlparse
 
 
 REMOTE_HOST_DOCUMENT = "AWS-StartPortForwardingSessionToRemoteHost"
+SESSION_ID_PATTERN = re.compile(r"Starting session with SessionId:\s*([^\s]+)")
 
 
 class ConnectError(RuntimeError):
     """A buyer-actionable connection error."""
+
+
+class SessionDiagnostics:
+    """Forward Session Manager output while remembering this client's session ID."""
+
+    def __init__(self, process: subprocess.Popen[Any]) -> None:
+        self.process = process
+        self.session_id: str | None = None
+        self._lock = threading.Lock()
+        self._threads: list[threading.Thread] = []
+
+    def _forward(self, stream: Any) -> None:
+        if stream is None:
+            return
+        for line in stream:
+            match = SESSION_ID_PATTERN.search(line)
+            with self._lock:
+                if match:
+                    self.session_id = match.group(1)
+                sys.stderr.write(line)
+                sys.stderr.flush()
+
+    def start(self) -> None:
+        for stream in (self.process.stdout, self.process.stderr):
+            thread = threading.Thread(target=self._forward, args=(stream,), daemon=True)
+            thread.start()
+            self._threads.append(thread)
+
+    def join(self, timeout: float = 2.0) -> None:
+        for thread in self._threads:
+            thread.join(timeout)
+
+
+def start_diagnostic_forwarders(process: subprocess.Popen[Any]) -> SessionDiagnostics:
+    diagnostics = SessionDiagnostics(process)
+    diagnostics.start()
+    return diagnostics
 
 
 def aws_base_args(region: str | None, profile: str | None) -> list[str]:
@@ -150,6 +190,24 @@ def wait_for_port(port: int, process: subprocess.Popen[Any], timeout: float) -> 
         except OSError:
             time.sleep(0.25)
     raise ConnectError(f"SSM tunnel did not listen on port {port} within {timeout:g} seconds")
+
+
+def terminate_session(session_id: str, region: str | None, profile: str | None) -> None:
+    command = aws_base_args(region, profile) + [
+        "ssm",
+        "terminate-session",
+        "--session-id",
+        session_id,
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode == 0:
+        return
+    detail = (completed.stderr or completed.stdout or "unknown AWS CLI error").strip()
+    if "InvalidSession" not in detail:
+        print(
+            f"warning: could not explicitly terminate SSM session {session_id}: {detail}",
+            file=sys.stderr,
+        )
 
 
 def kubeconfig_payload(
@@ -337,14 +395,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     ensure_port_available(args.local_port)
     kubeconfig_path = write_private_json(kubeconfig)
     tunnel: subprocess.Popen[Any] | None = None
+    diagnostics: SessionDiagnostics | None = None
     try:
         print(f"Opening SSM identity relay to {host}:443...", file=sys.stderr)
         tunnel = subprocess.Popen(
             tunnel_command,
             start_new_session=(os.name == "posix"),
-            stdout=sys.stderr,
-            stderr=sys.stderr,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
         )
+        diagnostics = start_diagnostic_forwarders(tunnel)
         wait_for_port(args.local_port, tunnel, args.connect_timeout)
         print("Relay ready; kubectl is using your local AWS identity.", file=sys.stderr)
         completed = subprocess.run(
@@ -355,6 +417,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if tunnel is not None:
             stop_tunnel(tunnel)
+        if diagnostics is not None:
+            diagnostics.join()
+            if diagnostics.session_id:
+                terminate_session(diagnostics.session_id, args.region, args.profile)
         kubeconfig_path.unlink(missing_ok=True)
 
 
