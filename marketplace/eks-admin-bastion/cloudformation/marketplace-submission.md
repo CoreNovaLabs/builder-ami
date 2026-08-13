@@ -1,91 +1,76 @@
 # Marketplace CloudFormation delivery submission
 
-This is the preferred buyer launch path for the EKS Admin Bastion because the
-template creates no public IPv4 address and no inbound security-group rules.
-It is not published yet.
+AWS Marketplace Catalog API supports `DeploymentTemplateDeliveryOptionDetails`
+for AMI products. A version may contain one standalone AMI option and up to
+three AMI-with-CloudFormation options. Every option for the version must be
+included in the original `AddDeliveryOptions` request; an option cannot be added
+to an existing version later.
 
-AWS Marketplace does not currently support single-AMI with CloudFormation
-delivery through the Catalog API. Add this option manually in the Marketplace
-Management Portal when submitting the next AMI version. All delivery options
-for that version must be included in the same request; they cannot be added to
-an existing version later.
+This release uses three options:
 
-## Assets
+1. Standalone AMI — compatibility/manual path.
+2. Identity Relay — per-operator EKS identity, no EKS permission on EC2.
+3. Audited Workstation — logged Run As shell, shared scoped EC2 role.
 
-- Template: `eks-admin-bastion.yaml`
-- Architecture diagram: `architecture.png`
-- Editable diagram source: `architecture.svg`
+## Versioned assets
 
-The template's `AmiId` parameter uses `AWS::EC2::Image::Id`, allowing AWS
-Marketplace to replace it with the subscribed product AMI during deployment.
+Run `make package-eks-delivery`. Upload the exact generated files to an immutable
+public HTTPS S3 prefix:
 
-## Delivery-option copy
+```text
+eks-admin-bastion/vYYYYMMDD-COMMITSHA12/
+├── x86_64/
+│   ├── identity-relay.yaml
+│   ├── audited-workstation.yaml
+│   ├── identity-relay-architecture.png
+│   └── audited-workstation-architecture.png
+├── arm64/
+│   └── ...
+└── manifest.json
+```
 
-**Title**
+The CFT `AmiId` parameter uses `AWS::EC2::Image::Id`. Catalog API
+`TemplateSources[0].ParameterName` must equal `AmiId`. Each architecture's
+rendered template allows only its matching architecture and selects a matching
+default instance type.
 
-Private SSM EKS Admin Bastion
+## Rendering and validation
 
-**Short description**
+The renderer preserves the standalone AMI delivery option and adds both CFT
+options only with the explicit `--include-eks-cloudformation` flag and HTTPS
+asset base URL.
 
-Deploy one EKS administration host in a private subnet with no public IP and no
-inbound security-group rules.
+```bash
+make render-eks-add-version \
+  PRODUCT=eks-admin-bastion-al2023-x86_64 \
+  AMI=ami-REPLACE_ME \
+  ACCESS_ROLE_ARN=arn:aws:iam::SELLER:role/CoreNovaMarketplaceAmiIngestion \
+  ASSET_BASE_URL=https://PUBLIC-BUCKET.s3.amazonaws.com/eks-admin-bastion/vYYYYMMDD-COMMITSHA12
+```
 
-**Long description**
+Then:
 
-This CloudFormation template deploys the subscribed CoreNova EKS Admin Bastion
-AMI as one EC2 instance in a buyer-selected private subnet. It creates a
-zero-ingress security group, an encrypted gp3 root volume, an EC2 instance role
-with AmazonSSMManagedInstanceCore, and an instance profile. IMDSv2 is required
-with a response hop limit of one. Operators connect through AWS Systems Manager
-Session Manager.
+1. Review the JSON and manifest hashes.
+2. Confirm all four URLs for that architecture return the intended immutable
+   asset without authentication or redirect.
+3. Submit only `Intent=VALIDATE` and wait for validation to succeed.
+4. Complete the release runbook and independent evidence review.
+5. Submit `Intent=APPLY` only after explicit release authorization.
 
-The template can optionally create an EKS Access Entry for the shared instance
-role. The default is the cluster-wide AmazonEKSViewPolicy; buyers can select an
-edit or administrator policy only after reviewing the shared-role security
-boundary. For a private EKS API endpoint, the template can optionally add TCP
-443 from the bastion security group to an existing cluster security group.
+## Buyer launch experience
 
-The private subnet must provide NAT egress or VPC endpoints for Systems Manager
-and every AWS API used by the administration tools. All users who can open a
-shell on the instance can use its shared EC2 role credentials. Grant Session
-Manager access only to trusted administrators.
+After subscription, the buyer can choose Custom Launch and **Launch with
+CloudFormation Console** directly in AWS Marketplace. They configure their VPC,
+private subnet, cluster, security group, access principal/scope, and audit
+settings before CloudFormation creates resources. A website quick-launch link is
+not required and must not be advertised as the primary launch path.
 
-**Usage instructions**
+## Compatibility requirements
 
-1. Select the VPC and a private subnet that can reach Systems Manager and the
-   required AWS APIs.
-2. Enter the existing EKS cluster name and an architecture-compatible instance
-   type (`t3.small` for x86_64 or `t4g.small` for ARM64 is a normal start).
-3. Keep `AmazonEKSViewPolicy` unless a reviewed operational need requires more
-   access. The EKS cluster authentication mode must be `API` or
-   `API_AND_CONFIG_MAP` when the template creates an Access Entry.
-4. Acknowledge IAM resource creation and launch the stack.
-5. Use the `StartSessionCommand` stack output, then run
-   `corenova-eks-check`, `aws sts get-caller-identity`, and a read-only EKS
-   command such as `kubectl get nodes`.
-
-The stack creates an IAM role, inline EKS discovery policy, instance profile,
-security group, EC2 instance, encrypted EBS volume, optional EKS Access Entry,
-and optional cluster security-group ingress. It does not create an SSH key or
-inbound rule.
-
-**Costs and quotas**
-
-Buyers pay the live AWS Marketplace software fee plus AWS infrastructure costs,
-including EC2, EBS, data transfer, NAT gateway, and VPC endpoints when used.
-Before launch, verify the regional EC2 On-Demand vCPU quota for the chosen
-instance family and the relevant Systems Manager and EKS quotas. Request quota
-increases through AWS Service Quotas if needed.
-
-## Submission checklist
-
-1. Rebuild both architectures with the pinned pipeline.
-2. Run the no-ingress SSM smoke test and credential-residue checks.
-3. Test the template with each new subscribed AMI in `us-east-1`; test every
-   additional Region before enabling it.
-4. Confirm the architecture diagram matches the submitted template.
-5. In the new-version request, select `AMI with CloudFormation` and upload the
-   template and diagram. Retain standalone AMI only as a clearly labeled private
-   SSH fallback.
-6. Review the generated Marketplace metadata and live offer terms.
-7. Submit from a delegated seller role, never from account-root credentials.
+- Publish as a new version; never replace an existing version's AMI.
+- Do not restrict the old version during initial rollout.
+- Do not silently migrate or terminate buyer instances.
+- Keep standalone AMI instructions available and clearly label its shared-role
+  and optional SSH responsibilities.
+- Support the prior version for the Marketplace-required period if it is later
+  restricted.

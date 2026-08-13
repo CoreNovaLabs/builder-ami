@@ -13,6 +13,7 @@ from productlib import PRODUCTS_FILE_ENV, fail, load_config
 
 VALIDATOR_ROLE_NAME = "CoreNovaMarketplaceValidatorRole"
 PUBLISHER_ROLE_NAME = "CoreNovaMarketplacePublisherRole"
+EKS_PRODUCT_IDS = {"prod-hapxotc2y7jmi", "prod-nspz2g6ki6qvo"}
 
 
 def assert_expected_caller(intent: str, expected_account_id: str) -> dict:
@@ -102,6 +103,60 @@ def assert_allowed_change_set(path: Path, *, allow_new_products: bool = False) -
     return data
 
 
+def assert_eks_delivery_plan(data: dict) -> None:
+    for change in data.get("ChangeSet", []):
+        if change.get("ChangeType") != "AddDeliveryOptions":
+            continue
+        entity_id = (change.get("Entity") or {}).get("Identifier", "").split("@", 1)[0]
+        if entity_id not in EKS_PRODUCT_IDS:
+            continue
+        options = (
+            (change.get("DetailsDocument") or {}).get("DeliveryOptions") or []
+        )
+        if len(options) != 3:
+            fail(
+                "EKS add-version plans must include standalone AMI, Identity Relay, "
+                "and Audited Workstation in the original version request"
+            )
+        standalone = (
+            (options[0].get("Details") or {}).get("AmiDeliveryOptionDetails") or {}
+        ).get("AmiSource") or {}
+        if not standalone:
+            fail("EKS delivery option 1 must be the standalone AMI")
+        expected_titles = ("Identity Relay", "Audited Workstation")
+        expected_fragments = ("/identity-relay", "/audited-workstation")
+        shared_keys = (
+            "AmiId",
+            "AccessRoleArn",
+            "UserName",
+            "OperatingSystemName",
+            "OperatingSystemVersion",
+        )
+        for option, title, expected_fragment in zip(
+            options[1:], expected_titles, expected_fragments
+        ):
+            if not str(option.get("DeliveryOptionTitle", "")).startswith(title):
+                fail(f"EKS delivery plan is missing the {title} option")
+            details = (
+                (option.get("Details") or {}).get(
+                    "DeploymentTemplateDeliveryOptionDetails"
+                )
+                or {}
+            )
+            sources = details.get("TemplateSources") or []
+            if len(sources) != 1 or sources[0].get("ParameterName") != "AmiId":
+                fail(f"{title} must map the Marketplace AMI to parameter AmiId")
+            source = sources[0].get("AmiSource") or {}
+            if any(source.get(key) != standalone.get(key) for key in shared_keys):
+                fail(f"{title} does not use the same AMI source as standalone delivery")
+            for url_field in ("Template", "ArchitectureDiagram"):
+                value = str(details.get(url_field, ""))
+                if not value.startswith("https://") or "?" in value or "#" in value:
+                    fail(f"{title} {url_field} must be a query-free HTTPS URL")
+                if expected_fragment not in value:
+                    fail(f"{title} {url_field} points to the wrong delivery asset")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("plan")
@@ -116,6 +171,7 @@ def main() -> None:
 
     path = Path(args.plan)
     data = assert_allowed_change_set(path, allow_new_products=args.allow_new_products)
+    assert_eks_delivery_plan(data)
     changes = data.get("ChangeSet", [])
     if not changes:
         fail("change set must contain at least one change")

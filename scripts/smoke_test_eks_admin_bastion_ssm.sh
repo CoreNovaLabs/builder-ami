@@ -155,8 +155,12 @@ fi
 REMOTE_COMMANDS=(
   'set -euo pipefail'
   'corenova-eks-check'
+  'corenova-eks-doctor --help >/dev/null'
+  'id corenova-operator'
+  'test "$(id -u corenova-operator)" -ne 0'
   'systemctl is-enabled --quiet amazon-ssm-agent'
   'systemctl is-active --quiet amazon-ssm-agent'
+  'agent_version="$(amazon-ssm-agent -version 2>&1 | sed -nE "s/.*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+).*/\1/p" | head -1)"; test -n "$agent_version"; test "$(printf "%s\n%s\n" "3.1.1374.0" "$agent_version" | sort -V | head -1)" = "3.1.1374.0"'
   'test -z "$(find /root /home -xdev -type f \( -path "*/.aws/credentials" -o -path "*/.kube/config" -o -name .bash_history -o -name .zsh_history \) -size +0c -print -quit 2>/dev/null)"'
   '! find /root /home /etc/corenova /opt/corenova -xdev -type f -size -2M -print0 2>/dev/null | xargs -0 -r grep -IlE "BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY" | grep -q .'
   'token="$(curl -fsS -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" http://169.254.169.254/latest/api/token)"; test -n "$token"; curl -fsS -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/instance-id >/dev/null'
@@ -165,8 +169,8 @@ REMOTE_COMMANDS=(
 if [[ -n "${CORENOVA_SMOKE_EKS_CLUSTER_NAME:-}" ]]; then
   EKS_REGION="${CORENOVA_SMOKE_EKS_REGION:-$REGION}"
   printf -v EKS_CHECK \
-    'aws eks update-kubeconfig --region %q --name %q; kubectl get nodes --request-timeout=30s' \
-    "$EKS_REGION" "$CORENOVA_SMOKE_EKS_CLUSTER_NAME"
+    'corenova-eks-doctor --cluster %q --region %q --namespace %q --output json' \
+    "$CORENOVA_SMOKE_EKS_CLUSTER_NAME" "$EKS_REGION" "${CORENOVA_SMOKE_EKS_NAMESPACE:-default}"
   REMOTE_COMMANDS+=("$EKS_CHECK")
 fi
 

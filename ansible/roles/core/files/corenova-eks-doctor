@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Read-only health checks for a Corenova EKS SSM Bastion instance."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import pwd
+import shutil
+import socket
+import subprocess
+import tempfile
+from typing import Any, Sequence
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+
+MIN_REMOTE_HOST_AGENT = (3, 1, 1374, 0)
+REQUIRED_TOOLS = (
+    "aws",
+    "kubectl",
+    "helm",
+    "eksctl",
+    "k9s",
+    "kubectx",
+    "kubens",
+    "jq",
+    "yq",
+    "git",
+    "tmux",
+)
+
+
+def command(
+    args: Sequence[str], timeout: float = 20, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        list(args),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        env=env,
+    )
+
+
+def result(name: str, status: str, detail: str) -> dict[str, str]:
+    return {"name": name, "status": status, "detail": detail.strip()}
+
+
+def check_tools() -> list[dict[str, str]]:
+    checks = []
+    for tool in REQUIRED_TOOLS:
+        path = shutil.which(tool)
+        checks.append(
+            result(
+                f"tool:{tool}",
+                "pass" if path else "fail",
+                path or "required executable is missing",
+            )
+        )
+    return checks
+
+
+def parse_version(value: str) -> tuple[int, int, int, int] | None:
+    for token in value.replace(":", " ").split():
+        parts = token.strip().split(".")
+        if len(parts) >= 3 and all(part.isdigit() for part in parts):
+            numbers = [int(part) for part in parts[:4]]
+            return tuple((numbers + [0] * (4 - len(numbers)))[:4])  # type: ignore[return-value]
+    return None
+
+
+def check_ssm_agent() -> list[dict[str, str]]:
+    checks = []
+    active = command(["systemctl", "is-active", "amazon-ssm-agent"])
+    checks.append(
+        result(
+            "ssm-agent-service",
+            "pass" if active.returncode == 0 else "fail",
+            active.stdout or active.stderr or "service is not active",
+        )
+    )
+    agent = command(["amazon-ssm-agent", "-version"])
+    raw_version = agent.stdout or agent.stderr
+    version = parse_version(raw_version)
+    if agent.returncode != 0 or version is None:
+        checks.append(result("ssm-agent-version", "fail", raw_version or "version unavailable"))
+    elif version < MIN_REMOTE_HOST_AGENT:
+        checks.append(
+            result(
+                "ssm-agent-version",
+                "fail",
+                f"{'.'.join(map(str, version))} is older than 3.1.1374.0",
+            )
+        )
+    else:
+        checks.append(result("ssm-agent-version", "pass", ".".join(map(str, version))))
+    return checks
+
+
+def imds_request(path: str, token: str | None = None) -> tuple[int, str]:
+    headers = {"X-aws-ec2-metadata-token": token} if token else {}
+    request = Request(f"http://169.254.169.254/latest/{path}", headers=headers)
+    try:
+        with urlopen(request, timeout=1) as response:
+            return response.status, response.read().decode("utf-8", errors="replace")
+    except HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", errors="replace")
+
+
+def check_instance_network() -> list[dict[str, str]]:
+    token_request = Request(
+        "http://169.254.169.254/latest/api/token",
+        method="PUT",
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
+    )
+    try:
+        with urlopen(token_request, timeout=1) as response:
+            token = response.read().decode("utf-8")
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        return [result("imds-v2", "warn", f"metadata service unavailable: {exc}")]
+    if not token:
+        return [result("imds-v2", "fail", "IMDSv2 returned an empty token")]
+    checks = [result("imds-v2", "pass", "token acquired")]
+    try:
+        status, public_ip = imds_request("meta-data/public-ipv4", token)
+    except (URLError, TimeoutError, OSError) as exc:
+        checks.append(result("public-ipv4", "warn", f"metadata lookup failed: {exc}"))
+    else:
+        if status == 404:
+            checks.append(result("public-ipv4", "pass", "no public IPv4 address assigned"))
+        elif status == 200 and public_ip.strip():
+            checks.append(result("public-ipv4", "fail", f"unexpected public IPv4: {public_ip.strip()}"))
+        else:
+            checks.append(result("public-ipv4", "warn", f"unexpected IMDS status {status}"))
+    return checks
+
+
+def check_operator_user() -> dict[str, str]:
+    try:
+        entry = pwd.getpwnam("corenova-operator")
+    except KeyError:
+        return result("run-as-user", "fail", "corenova-operator does not exist")
+    if entry.pw_uid == 0:
+        return result("run-as-user", "fail", "corenova-operator unexpectedly has uid 0")
+    return result("run-as-user", "pass", f"uid={entry.pw_uid} home={entry.pw_dir}")
+
+
+def check_aws_identity(region: str | None) -> dict[str, str]:
+    args = ["aws"]
+    if region:
+        args.extend(["--region", region])
+    args.extend(["sts", "get-caller-identity", "--output", "json"])
+    completed = command(args)
+    if completed.returncode != 0:
+        return result("aws-identity", "fail", completed.stderr or completed.stdout)
+    try:
+        identity = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return result("aws-identity", "fail", "AWS CLI returned invalid JSON")
+    return result("aws-identity", "pass", str(identity.get("Arn", "unknown ARN")))
+
+
+def check_cluster(cluster: str, region: str | None, namespace: str) -> list[dict[str, str]]:
+    args = ["aws"]
+    if region:
+        args.extend(["--region", region])
+    args.extend(["eks", "describe-cluster", "--name", cluster, "--output", "json"])
+    described = command(args)
+    if described.returncode != 0:
+        return [result("eks-describe-cluster", "fail", described.stderr or described.stdout)]
+    try:
+        payload = json.loads(described.stdout)["cluster"]
+        endpoint = payload["endpoint"]
+        host = endpoint.split("//", 1)[1].split("/", 1)[0]
+    except (KeyError, IndexError, json.JSONDecodeError):
+        return [result("eks-describe-cluster", "fail", "response is missing endpoint")]
+    checks = [result("eks-describe-cluster", "pass", endpoint)]
+    try:
+        with socket.create_connection((host, 443), timeout=3):
+            checks.append(result("eks-endpoint-connectivity", "pass", f"{host}:443 reachable"))
+    except OSError as exc:
+        checks.append(result("eks-endpoint-connectivity", "fail", str(exc)))
+        return checks
+
+    with tempfile.TemporaryDirectory(prefix="corenova-eks-doctor-") as temp_dir:
+        kubeconfig = str(Path(temp_dir) / "config")
+        update = ["aws"]
+        if region:
+            update.extend(["--region", region])
+        update.extend(
+            ["eks", "update-kubeconfig", "--name", cluster, "--kubeconfig", kubeconfig]
+        )
+        configured = command(update)
+        if configured.returncode != 0:
+            checks.append(result("kubeconfig", "fail", configured.stderr or configured.stdout))
+            return checks
+        environment = dict(os.environ)
+        environment["KUBECONFIG"] = kubeconfig
+        authorized = command(
+            ["kubectl", "auth", "can-i", "get", "pods", "--namespace", namespace],
+            env=environment,
+        )
+        allowed = authorized.returncode == 0 and authorized.stdout.strip().lower() == "yes"
+        checks.append(
+            result(
+                "kubernetes-authorization",
+                "pass" if allowed else "fail",
+                authorized.stdout or authorized.stderr or "authorization denied",
+            )
+        )
+    return checks
+
+
+def parser() -> argparse.ArgumentParser:
+    value = argparse.ArgumentParser(description="Run read-only EKS bastion health checks")
+    value.add_argument("--cluster", help="also verify EKS reachability and Kubernetes auth")
+    value.add_argument("--region", help="AWS region")
+    value.add_argument("--namespace", default="default")
+    value.add_argument("--output", choices=("text", "json"), default="text")
+    return value
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    checks = check_tools()
+    checks.extend(check_ssm_agent())
+    checks.extend(check_instance_network())
+    checks.append(check_operator_user())
+    checks.append(check_aws_identity(args.region))
+    if args.cluster:
+        checks.extend(check_cluster(args.cluster, args.region, args.namespace))
+    summary = {
+        "ok": not any(item["status"] == "fail" for item in checks),
+        "checks": checks,
+        "note": "Identity Relay port-forwarded session contents cannot be logged by SSM.",
+    }
+    if args.output == "json":
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        for item in checks:
+            print(f"{item['status'].upper():4}\t{item['name']}\t{item['detail']}")
+        print(f"\nOverall: {'PASS' if summary['ok'] else 'FAIL'}")
+        print(summary["note"])
+    return 0 if summary["ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

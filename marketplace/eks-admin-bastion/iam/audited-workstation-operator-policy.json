@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartOneAuditedWorkstationDocument",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": [
+        "arn:aws:ec2:REGION:ACCOUNT_ID:instance/INSTANCE_ID",
+        "arn:aws:ssm:REGION:ACCOUNT_ID:document/SESSION_DOCUMENT_NAME"
+      ]
+    },
+    {
+      "Sid": "OpenOwnAuditedDataChannel",
+      "Effect": "Allow",
+      "Action": "ssmmessages:OpenDataChannel",
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    },
+    {
+      "Sid": "ManageOwnAuditedSession",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:ResumeSession",
+        "ssm:TerminateSession"
+      ],
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    }
+  ]
+}

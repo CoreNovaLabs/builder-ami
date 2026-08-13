@@ -181,6 +181,124 @@ def validate_observer() -> None:
         fail(f"observer has unexpected actions: {unexpected}")
 
 
+def validate_instance_publisher() -> None:
+    policy = load("marketplace-instance-publisher-policy.json")
+    trust = load("marketplace-instance-publisher-trust-policy.json")
+    rendered = json.dumps(policy)
+    for required in (
+        "prod-hapxotc2y7jmi",
+        "prod-nspz2g6ki6qvo",
+        "offer-2izpqagw3tftq",
+        "offer-2n3inrntp75ye",
+        "AddInstanceTypes",
+        "AddDimensions",
+        "UpdatePricingTerms",
+    ):
+        if required not in rendered:
+            fail(f"instance publisher boundary is missing {required}")
+    for forbidden in (
+        "AddDeliveryOptions",
+        "AddRegions",
+        "UpdateInformation",
+        "UpdateVisibility",
+        "ReleaseProduct",
+        "ReleaseOffer",
+    ):
+        if forbidden in rendered:
+            fail(f"instance publisher unexpectedly allows {forbidden}")
+    trust_rendered = json.dumps(trust)
+    if "arn:aws:iam::582920575154:root" not in trust_rendered:
+        fail("instance publisher trust is not pinned to the seller root principal")
+    if "aws:MultiFactorAuthPresent" not in trust_rendered:
+        fail("instance publisher trust does not require MFA")
+
+
+def validate_eks_delivery_release_roles() -> None:
+    asset = load("marketplace-asset-publisher-policy.json")
+    asset_rendered = json.dumps(asset)
+    for required in (
+        "corenova-marketplace-assets-582920575154",
+        "eks-admin-bastion/*",
+        "s3:PutObject",
+        "s3:DeleteObject",
+    ):
+        if required not in asset_rendered:
+            fail(f"asset publisher boundary is missing {required}")
+    delete_statements = [
+        statement
+        for statement in asset.get("Statement") or []
+        if "s3:DeleteObject" in actions(statement)
+    ]
+    if not delete_statements or any(item.get("Effect") != "Deny" for item in delete_statements):
+        fail("asset publisher must explicitly deny object deletion")
+
+    delivery = load("marketplace-delivery-publisher-policy.json")
+    delivery_rendered = json.dumps(delivery)
+    for required in (
+        "prod-hapxotc2y7jmi",
+        "prod-nspz2g6ki6qvo",
+        "AddDeliveryOptions",
+        "aws-marketplace:Intent",
+        "APPLY",
+        "CoreNovaMarketplaceAmiIngestion",
+    ):
+        if required not in delivery_rendered:
+            fail(f"delivery publisher boundary is missing {required}")
+    for forbidden in (
+        "RestrictDeliveryOptions",
+        "UpdateDeliveryOptions",
+        "UpdateInformation",
+        "UpdateVisibility",
+        "UpdatePricingTerms",
+        "ReleaseProduct",
+        "ReleaseOffer",
+    ):
+        if forbidden in delivery_rendered:
+            fail(f"delivery publisher unexpectedly allows {forbidden}")
+
+    runner = load("eks-delivery-e2e-policy.json")
+    runner_actions = {
+        action
+        for statement in runner.get("Statement") or []
+        if statement.get("Effect") == "Allow"
+        for action in actions(statement)
+    }
+    for forbidden in ("ec2:*", "eks:*", "iam:*", "cloudformation:*"):
+        if forbidden in runner_actions:
+            fail(f"E2E runner contains broad action {forbidden}")
+    runner_rendered = json.dumps(runner)
+    for required in (
+        "CoreNovaEksDeliveryE2ECloudFormationRole",
+        "ssm:resourceTag/Purpose",
+        "eks-delivery-e2e",
+        "AWS-StartPortForwardingSessionToRemoteHost",
+    ):
+        if required not in runner_rendered:
+            fail(f"E2E runner boundary is missing {required}")
+
+    service = load("eks-delivery-e2e-cloudformation-policy.json")
+    service_rendered = json.dumps(service)
+    if '"Action": "ec2:*"' in service_rendered or '"Action": "eks:*"' in service_rendered:
+        fail("E2E CloudFormation service policy contains a broad write wildcard")
+    for required in (
+        "iam:CreateServiceLinkedRole",
+        "eks.amazonaws.com",
+        "corenova-eks-e2e-*",
+        "corenova-audited-e2e-*",
+    ):
+        if required not in service_rendered:
+            fail(f"E2E CloudFormation policy is missing {required}")
+
+    main_trust = json.dumps(load("github-main-trust-policy.json"))
+    production_trust = json.dumps(load("github-marketplace-production-trust-policy.json"))
+    immutable_main = "repo:CoreNovaLabs@283825262/builder-ami@1301293394:ref:refs/heads/main"
+    if immutable_main not in main_trust:
+        fail("delivery operational roles are not pinned to immutable repository main")
+    production_subject = "repo:CoreNovaLabs@283825262/builder-ami@1301293394:environment:marketplace-production"
+    if production_subject not in production_trust or "refs/heads/main" in production_trust:
+        fail("delivery publisher trust is not isolated to marketplace-production")
+
+
 def validate_terraform_trust() -> None:
     main = (
         ROOT / "infra" / "terraform" / "eks-admin-bastion-operator-roles" / "main.tf"
@@ -212,6 +330,8 @@ def main() -> None:
     validate_smoke_core()
     validate_smoke_runner()
     validate_observer()
+    validate_instance_publisher()
+    validate_eks_delivery_release_roles()
     validate_terraform_trust()
     print("IAM_BOUNDARIES_OK")
 

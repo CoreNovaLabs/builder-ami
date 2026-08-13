@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadOneRelayStack",
+      "Effect": "Allow",
+      "Action": "cloudformation:DescribeStacks",
+      "Resource": "arn:aws:cloudformation:REGION:ACCOUNT_ID:stack/STACK_NAME/*"
+    },
+    {
+      "Sid": "OpenOwnRelayDataChannel",
+      "Effect": "Allow",
+      "Action": "ssmmessages:OpenDataChannel",
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    },
+    {
+      "Sid": "DiscoverOneEksCluster",
+      "Effect": "Allow",
+      "Action": "eks:DescribeCluster",
+      "Resource": "arn:aws:eks:REGION:ACCOUNT_ID:cluster/CLUSTER_NAME"
+    },
+    {
+      "Sid": "StartRelayOnly",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": [
+        "arn:aws:ec2:REGION:ACCOUNT_ID:instance/INSTANCE_ID",
+        "arn:aws:ssm:REGION::document/AWS-StartPortForwardingSessionToRemoteHost"
+      ]
+    },
+    {
+      "Sid": "ManageOwnRelaySession",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:ResumeSession",
+        "ssm:TerminateSession"
+      ],
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    }
+  ]
+}

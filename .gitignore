@@ -36,6 +36,11 @@ kubeconfig
 *.swp
 *.swo
 .pytest_cache/
+.codex-home/
+.codex-tmp/
+$CODEX_HOME/
+tmp/
+operations/tmp/
 build/
 dist/
 packer_cache/

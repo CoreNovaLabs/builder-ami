@@ -1,0 +1,77 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateOnlyEksServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {"StringEquals": {"iam:AWSServiceName": "eks.amazonaws.com"}}
+    },
+    {
+      "Sid": "ManageDisposableEc2NetworkAndInstances",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AllocateAddress", "ec2:AssociateAddress", "ec2:AttachInternetGateway",
+        "ec2:AuthorizeSecurityGroupEgress", "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateInternetGateway", "ec2:CreateNatGateway", "ec2:CreateRoute",
+        "ec2:CreateRouteTable", "ec2:CreateSecurityGroup", "ec2:CreateSubnet",
+        "ec2:CreateTags", "ec2:CreateVpc", "ec2:DeleteInternetGateway",
+        "ec2:DeleteNatGateway", "ec2:DeleteRoute", "ec2:DeleteRouteTable",
+        "ec2:DeleteSecurityGroup", "ec2:DeleteSubnet", "ec2:DeleteTags", "ec2:DeleteVpc",
+        "ec2:Describe*", "ec2:DetachInternetGateway", "ec2:DisassociateAddress",
+        "ec2:DisassociateRouteTable", "ec2:ModifySubnetAttribute", "ec2:ModifyVpcAttribute",
+        "ec2:ReleaseAddress", "ec2:ReplaceRoute", "ec2:RevokeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress", "ec2:RunInstances", "ec2:StopInstances",
+        "ec2:TerminateInstances", "ec2:AssociateRouteTable"
+      ],
+      "Resource": "*",
+      "Condition": {"StringEqualsIfExists": {"aws:RequestedRegion": "us-east-1"}}
+    },
+    {
+      "Sid": "ManageNamedE2EClusters",
+      "Effect": "Allow",
+      "Action": [
+        "eks:CreateCluster", "eks:DeleteCluster", "eks:DescribeCluster", "eks:TagResource",
+        "eks:UntagResource", "eks:CreateAccessEntry", "eks:DeleteAccessEntry",
+        "eks:DescribeAccessEntry", "eks:AssociateAccessPolicy", "eks:DisassociateAccessPolicy",
+        "eks:ListAssociatedAccessPolicies"
+      ],
+      "Resource": [
+        "arn:aws:eks:us-east-1:582920575154:cluster/corenova-eks-e2e-*",
+        "arn:aws:eks:us-east-1:582920575154:access-entry/corenova-eks-e2e-*/*/*/*/*",
+        "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+      ]
+    },
+    {
+      "Sid": "ManageOnlyStackGeneratedE2ERoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole", "iam:DeleteRole", "iam:UpdateAssumeRolePolicy", "iam:TagRole",
+        "iam:UntagRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy",
+        "iam:ListRolePolicies", "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies", "iam:GetRole", "iam:PassRole",
+        "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagInstanceProfile", "iam:UntagInstanceProfile"
+      ],
+      "Resource": [
+        "arn:aws:iam::582920575154:role/corenova-*-e2e-*",
+        "arn:aws:iam::582920575154:role/corenova-eks-e2e/*",
+        "arn:aws:iam::582920575154:instance-profile/corenova-*-e2e-*"
+      ]
+    },
+    {
+      "Sid": "ManageE2ESsmDocuments",
+      "Effect": "Allow",
+      "Action": ["ssm:CreateDocument", "ssm:DeleteDocument", "ssm:DescribeDocument", "ssm:UpdateDocument", "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"],
+      "Resource": "arn:aws:ssm:us-east-1:582920575154:document/corenova-audited-e2e-*"
+    },
+    {
+      "Sid": "ManageE2EAuditLogs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource", "logs:DescribeLogGroups"],
+      "Resource": "arn:aws:logs:us-east-1:582920575154:log-group:/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
+    }
+  ]
+}
