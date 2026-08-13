@@ -85,7 +85,7 @@ jobs:
           curl --fail --silent --show-error \
             https://s3.amazonaws.com/session-manager-downloads/plugin/1.2.835.0/ubuntu_64bit/session-manager-plugin.deb \
             --output /tmp/session-manager-plugin.deb
-          echo '1c76b9aaa6158613917f0c77b432a989efe9f27a17dbb449afae8a066d7ede1b  /tmp/session-manager-plugin.deb' \
+          echo '7c6dcad12518571cc7959a713e6a8ae1bdf6ed66fd9bee37dc189e39ca58ae03  /tmp/session-manager-plugin.deb' \
             | sha256sum --check
           sudo dpkg -i /tmp/session-manager-plugin.deb
           [[ "$(session-manager-plugin --version)" == 1.2.835.0 ]]
