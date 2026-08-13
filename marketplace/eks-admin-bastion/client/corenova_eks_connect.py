@@ -342,6 +342,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         tunnel = subprocess.Popen(
             tunnel_command,
             start_new_session=(os.name == "posix"),
+            stdout=sys.stderr,
+            stderr=sys.stderr,
         )
         wait_for_port(args.local_port, tunnel, args.connect_timeout)
         print("Relay ready; kubectl is using your local AWS identity.", file=sys.stderr)

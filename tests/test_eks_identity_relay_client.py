@@ -107,6 +107,38 @@ class ResolutionTests(unittest.TestCase):
             client.stop_tunnel(process)
         killpg.assert_called_once_with(123, client.signal.SIGTERM)
 
+    @mock.patch.object(client, "resolve_connection")
+    @mock.patch.object(client, "write_private_json")
+    @mock.patch.object(client, "wait_for_port")
+    @mock.patch.object(client, "stop_tunnel")
+    @mock.patch.object(client.subprocess, "run")
+    @mock.patch.object(client.subprocess, "Popen")
+    @mock.patch.object(client, "require_executables")
+    @mock.patch.object(client, "ensure_port_available")
+    def test_tunnel_diagnostics_do_not_contaminate_kubectl_stdout(
+        self,
+        _ensure_port: mock.Mock,
+        _require_executables: mock.Mock,
+        popen: mock.Mock,
+        run: mock.Mock,
+        _stop_tunnel: mock.Mock,
+        _wait_for_port: mock.Mock,
+        write_private_json: mock.Mock,
+        resolve_connection: mock.Mock,
+    ) -> None:
+        resolve_connection.return_value = (
+            "i-123",
+            "cluster",
+            "https://cluster.example.eks.amazonaws.com",
+            "Y2VydA==",
+        )
+        write_private_json.return_value = mock.Mock()
+        write_private_json.return_value.unlink.return_value = None
+        run.return_value.returncode = 0
+        self.assertEqual(client.main(["--instance-id", "i-123", "--cluster", "cluster"]), 0)
+        self.assertIs(popen.call_args.kwargs["stdout"], client.sys.stderr)
+        self.assertIs(popen.call_args.kwargs["stderr"], client.sys.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

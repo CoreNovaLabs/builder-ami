@@ -48,6 +48,19 @@ stack_exists() {
   aws cloudformation describe-stacks --region "$REGION" --stack-name "$1" >/dev/null 2>&1
 }
 
+terminate_active_sessions() {
+  local instance_id="$1" session_id
+  [[ -n "$instance_id" ]] || return 0
+  while IFS= read -r session_id; do
+    [[ -n "$session_id" && "$session_id" != None ]] || continue
+    aws ssm terminate-session --region "$REGION" --session-id "$session_id" >/dev/null
+  done < <(
+    aws ssm describe-sessions --region "$REGION" --state Active \
+      --filters "key=Target,value=$instance_id" \
+      --query 'Sessions[].SessionId' --output text 2>/dev/null | tr '\t' '\n'
+  )
+}
+
 delete_stack() {
   local name="$1"
   if stack_exists "$name"; then
@@ -60,6 +73,8 @@ cleanup() {
   local rc=$?
   local cleanup_rc=0 final_rc
   set +e
+  terminate_active_sessions "${AUDITED_INSTANCE_ID:-}" || cleanup_rc=1
+  terminate_active_sessions "${IDENTITY_INSTANCE_ID:-}" || cleanup_rc=1
   delete_stack "$NEGATIVE_STACK" || cleanup_rc=1
   delete_stack "$AUDITED_STACK" || cleanup_rc=1
   delete_stack "$IDENTITY_STACK" || cleanup_rc=1
