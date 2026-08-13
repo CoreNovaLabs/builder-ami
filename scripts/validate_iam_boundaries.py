@@ -61,6 +61,18 @@ def validate_builder() -> None:
             fail(f"builder RunInstances boundary is missing {required}")
     if "arn:aws:ec2:us-east-1::image/*" not in rendered:
         fail("builder must use the accountless EC2 image ARN format")
+    source_image = next(
+        (
+            statement
+            for statement in run_statements
+            if statement.get("Sid") == "UseAmazonAmi"
+        ),
+        None,
+    )
+    if source_image is None or string_equals(source_image).get("aws:ResourceAccount") != "137112412989":
+        fail("builder does not restrict source AMIs to the Amazon Linux publisher account")
+    if "ec2:Owner" in json.dumps(source_image):
+        fail("builder source AMI must use the numeric aws:ResourceAccount condition")
     policy_rendered = json.dumps(policy)
     if "arn:aws:ec2:us-east-1::snapshot/*" not in policy_rendered:
         fail("builder must use the accountless EC2 snapshot ARN format")
@@ -135,7 +147,7 @@ def validate_smoke_runner() -> None:
         ),
         None,
     )
-    if image_statement is None or string_equals(image_statement).get("ec2:Owner") != "582920575154":
+    if image_statement is None or string_equals(image_statement).get("aws:ResourceAccount") != "582920575154":
         fail("smoke runner does not restrict candidate AMIs to the seller account")
     expected_instance = "arn:aws:ec2:us-east-1:582920575154:instance/*"
     type_limited = []
