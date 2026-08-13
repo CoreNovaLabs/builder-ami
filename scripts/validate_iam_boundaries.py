@@ -316,6 +316,23 @@ def validate_eks_delivery_release_roles() -> None:
         "StringEquals": {"aws:RequestedRegion": "us-east-1"}
     }:
         fail("the wildcard log metadata statement must remain region scoped")
+    audit_logs = [
+        statement
+        for statement in service.get("Statement") or []
+        if statement.get("Sid") == "ManageE2EAuditLogs"
+    ]
+    if len(audit_logs) != 1:
+        fail("E2E CloudFormation policy must have one audit-log statement")
+    audit_statement = audit_logs[0]
+    audit_actions = set(actions(audit_statement))
+    for required in ("logs:ListTagsForResource", "logs:DescribeIndexPolicies"):
+        if required not in audit_actions:
+            fail(f"E2E CloudFormation policy is missing update read action {required}")
+    if audit_statement.get("Resource") != (
+        "arn:aws:logs:us-east-1:582920575154:log-group:"
+        "/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
+    ):
+        fail("E2E audit-log actions must remain prefix scoped")
 
     main_trust = json.dumps(load("github-main-trust-policy.json"))
     production_trust = json.dumps(load("github-marketplace-production-trust-policy.json"))
