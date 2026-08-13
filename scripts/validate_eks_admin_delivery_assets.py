@@ -235,6 +235,10 @@ def validate_e2e_workflow() -> None:
         "delivery-e2e-${{ github.run_id }}-${{ github.run_attempt }}",
     ):
         assert required in workflow
+    runner = (ROOT / "scripts" / "run_eks_delivery_e2e.sh").read_text(encoding="utf-8")
+    assert 'REMOTE_AUDIT_COMMAND_B64=' in runner
+    assert '-re "$env(MARKER)" {}' in runner
+    assert '-re "^$env(MARKER)' not in runner
 
 
 def main() -> int:
