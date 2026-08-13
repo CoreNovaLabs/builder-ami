@@ -1,0 +1,290 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Corenova EKS SSM Bastion - Identity Relay. Creates a private, zero-ingress
+  SSM relay for the EKS API. The EC2 role is deliberately not authorized to
+  call EKS; kubectl authentication remains bound to the operator's AWS identity.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network and cluster
+        Parameters:
+          - VpcId
+          - SubnetId
+          - ClusterName
+          - ClusterSecurityGroupId
+          - CreateClusterSecurityGroupIngress
+      - Label:
+          default: Operator access (optional)
+        Parameters:
+          - CreateOperatorAccessEntry
+          - OperatorRoleArn
+          - EksAccessPolicyName
+          - AccessScope
+          - KubernetesNamespace
+      - Label:
+          default: Bastion instance
+        Parameters:
+          - AmiId
+          - InstanceArchitecture
+          - InstanceType
+          - RootVolumeSize
+    ParameterLabels:
+      AmiId:
+        default: Marketplace AMI ID
+      OperatorRoleArn:
+        default: IAM role used by the operator on their local workstation
+
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Supplied automatically when launched from AWS Marketplace.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC containing the private subnet and EKS control-plane endpoint.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Private subnet with SSM connectivity through NAT or VPC endpoints.
+  ClusterName:
+    Type: String
+    MinLength: 1
+    MaxLength: 100
+    AllowedPattern: '^[0-9A-Za-z][A-Za-z0-9_-]*$'
+    Description: Existing EKS cluster name used by the local connection helper.
+  ClusterSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: >-
+      Existing EKS cluster security group. Select the group attached to the
+      intended EKS control plane even when ingress is managed elsewhere.
+  CreateClusterSecurityGroupIngress:
+    Type: String
+    Default: 'Yes'
+    AllowedValues: ['Yes', 'No']
+    Description: >-
+      Choose Yes for a private EKS endpoint unless an equivalent rule already exists.
+  CreateOperatorAccessEntry:
+    Type: String
+    Default: 'No'
+    AllowedValues: ['Yes', 'No']
+    Description: >-
+      Optionally create an EKS access entry for OperatorRoleArn. Choose No when
+      the role is already managed by your platform/IAM automation.
+  OperatorRoleArn:
+    Type: String
+    Default: ''
+    MaxLength: 2048
+    AllowedPattern: '^$|^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/.+$'
+    Description: >-
+      IAM role assumed by the human operator. Required only when this stack
+      creates the EKS access entry; it is never attached to the EC2 instance.
+  EksAccessPolicyName:
+    Type: String
+    Default: AmazonEKSViewPolicy
+    AllowedValues:
+      - AmazonEKSViewPolicy
+      - AmazonEKSEditPolicy
+      - AmazonEKSAdminPolicy
+      - AmazonEKSClusterAdminPolicy
+    Description: EKS access policy associated with the operator role.
+  AccessScope:
+    Type: String
+    Default: Namespace
+    AllowedValues: [Namespace, Cluster]
+    Description: Namespace is the least-privilege default.
+  KubernetesNamespace:
+    Type: String
+    Default: default
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+    Description: Namespace used when AccessScope is Namespace.
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t4g.micro
+      - t4g.small
+      - t4g.medium
+      - t4g.large
+    Description: Must match the architecture of the selected Marketplace AMI.
+  InstanceArchitecture:
+    Type: String
+    Default: x86_64
+    AllowedValues: [x86_64, arm64]
+    Description: >-
+      Architecture of the subscribed AMI. Marketplace release assets lock this
+      value to the architecture of the product listing.
+  RootVolumeSize:
+    Type: Number
+    Default: 12
+    MinValue: 8
+    MaxValue: 100
+    Description: Encrypted gp3 root volume size in GiB.
+
+Rules:
+  RequireOperatorRoleWhenCreatingAccessEntry:
+    RuleCondition: !Equals [!Ref CreateOperatorAccessEntry, 'Yes']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref OperatorRoleArn, '']]
+        AssertDescription: OperatorRoleArn is required when CreateOperatorAccessEntry is Yes.
+  RequireArchitectureCompatibleInstanceType:
+    Assertions:
+      - Assert: !Or
+          - !And
+            - !Equals [!Ref InstanceArchitecture, x86_64]
+            - !Contains
+              - [t3.micro, t3.small, t3.medium, t3.large]
+              - !Ref InstanceType
+          - !And
+            - !Equals [!Ref InstanceArchitecture, arm64]
+            - !Contains
+              - [t4g.micro, t4g.small, t4g.medium, t4g.large]
+              - !Ref InstanceType
+        AssertDescription: InstanceType must match the Marketplace AMI architecture.
+
+Conditions:
+  ManageClusterIngress: !Equals [!Ref CreateClusterSecurityGroupIngress, 'Yes']
+  ManageOperatorAccess: !Equals [!Ref CreateOperatorAccessEntry, 'Yes']
+  UseClusterScope: !Equals [!Ref AccessScope, Cluster]
+  UseNamespaceScope: !Equals [!Ref AccessScope, Namespace]
+  CreateClusterScopedAccess: !And
+    - !Condition ManageOperatorAccess
+    - !Condition UseClusterScope
+  CreateNamespaceScopedAccess: !And
+    - !Condition ManageOperatorAccess
+    - !Condition UseNamespaceScope
+
+Resources:
+  RelaySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Zero-ingress security group for the Corenova EKS identity relay
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: SSM, AWS APIs, and EKS API outbound connectivity
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-identity-relay'
+        - Key: corenova:access-mode
+          Value: identity-relay
+
+  ClusterApiIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: ManageClusterIngress
+    Properties:
+      GroupId: !Ref ClusterSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt RelaySecurityGroup.GroupId
+      Description: Corenova EKS identity relay to Kubernetes API
+
+  RelayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: SSM-only role; intentionally has no EKS API permissions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Tags:
+        - Key: corenova:access-mode
+          Value: identity-relay
+
+  RelayInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref RelayRole
+
+  OperatorClusterAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Condition: CreateClusterScopedAccess
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1030]
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !Ref OperatorRoleArn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: !Sub 'arn:${AWS::Partition}:eks::aws:cluster-access-policy/${EksAccessPolicyName}'
+          AccessScope:
+            Type: cluster
+
+  OperatorNamespaceAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Condition: CreateNamespaceScopedAccess
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1030]
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !Ref OperatorRoleArn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: !Sub 'arn:${AWS::Partition}:eks::aws:cluster-access-policy/${EksAccessPolicyName}'
+          AccessScope:
+            Type: namespace
+            Namespaces:
+              - !Ref KubernetesNamespace
+
+  RelayInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref RelayInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeviceIndex: '0'
+          SubnetId: !Ref SubnetId
+          GroupSet:
+            - !GetAtt RelaySecurityGroup.GroupId
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref RootVolumeSize
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-identity-relay'
+        - Key: corenova:access-mode
+          Value: identity-relay
+        - Key: corenova:cluster
+          Value: !Ref ClusterName
+
+Outputs:
+  InstanceId:
+    Description: SSM managed node used by the local identity relay helper.
+    Value: !Ref RelayInstance
+  ClusterName:
+    Description: EKS cluster name used by the local identity relay helper.
+    Value: !Ref ClusterName
+  RelaySecurityGroupId:
+    Value: !GetAtt RelaySecurityGroup.GroupId
+  ConnectCommand:
+    Description: Run from a workstation containing the Corenova client helper.
+    Value: !Sub 'python3 corenova_eks_connect.py --stack-name ${AWS::StackName} --region ${AWS::Region}'
+  AccessMode:
+    Value: identity-relay

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="700" viewBox="0 0 1100 700" role="img" aria-labelledby="title desc">
+  <title id="title">Corenova EKS SSM Bastion Audited Workstation architecture</title>
+  <desc id="desc">A trusted administrator starts a product-specific Session Manager shell on a private EC2 workstation. Shell activity streams to retained CloudWatch Logs and the instance role has a scoped EKS access entry.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+    <style>
+      .t{font:700 27px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#0f172a}.s{font:400 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#475569}.h{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#0f172a}.b{font:400 14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#334155}.l{font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#1d4ed8}.a{stroke:#2563eb;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1100" height="700" fill="#f8fafc"/>
+  <text x="45" y="54" class="t">Audited Workstation — streamed administrative shell</text>
+  <text x="45" y="82" class="s">No public IP • no inbound rules • View + namespace is the safe default</text>
+  <rect x="365" y="115" width="690" height="455" rx="22" fill="#eff6ff" stroke="#60a5fa" stroke-width="2"/>
+  <text x="395" y="148" class="h">Customer VPC / private subnet</text>
+  <rect x="45" y="220" width="235" height="150" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="75" y="260" class="h">Trusted administrator</text>
+  <text x="75" y="292" class="b">AWS CLI + SSM plugin</text>
+  <text x="75" y="317" class="b">Authorized for one instance</text>
+  <text x="75" y="342" class="b">Uses stack output command</text>
+  <rect x="415" y="195" width="290" height="230" rx="18" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="490" y="237" class="h">Corenova workstation</text>
+  <text x="445" y="269" class="b">Run As: corenova-operator</text>
+  <text x="445" y="294" class="b">AWS CLI, kubectl, Helm, diagnostics</text>
+  <text x="445" y="319" class="b">Encrypted gp3 + IMDSv2</text>
+  <rect x="445" y="344" width="230" height="48" rx="10" fill="#dcfce7"/>
+  <text x="465" y="365" class="b">0 inbound rules</text>
+  <text x="465" y="383" class="b">non-root interactive user</text>
+  <image href="icons/amazon-ec2.png" x="430" y="215" width="48" height="48"/>
+  <rect x="770" y="195" width="235" height="105" rx="18" fill="#fff7ed" stroke="#fb923c" stroke-width="2"/>
+  <text x="845" y="237" class="h">CloudWatch Logs</text>
+  <text x="845" y="269" class="b">Streaming • retained</text>
+  <image href="icons/amazon-cloudwatch.png" x="785" y="215" width="48" height="48"/>
+  <rect x="770" y="365" width="235" height="105" rx="18" fill="#ecfeff" stroke="#06b6d4" stroke-width="2"/>
+  <text x="845" y="407" class="h">Amazon EKS cluster</text>
+  <text x="845" y="439" class="b">Scoped EC2 role</text>
+  <image href="icons/amazon-eks.png" x="785" y="380" width="48" height="48"/>
+  <rect x="415" y="470" width="290" height="64" rx="14" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="445" y="497" class="h">Dedicated SSM document</text>
+  <text x="445" y="520" class="b">Run As • idle timeout • max duration</text>
+  <path d="M280 290H415" class="a"/>
+  <text x="295" y="272" class="l">StartSession</text>
+  <path d="M705 255H770" class="a"/>
+  <text x="710" y="236" class="l">stream shell</text>
+  <path d="M705 385H770" class="a"/>
+  <text x="710" y="365" class="l">HTTPS 443</text>
+  <path d="M560 470V425" class="a"/>
+  <rect x="45" y="610" width="1010" height="52" rx="13" fill="#0f172a"/>
+  <text x="70" y="642" style="font:600 14px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:#fff">Security boundary: every shell user shares the EC2 role; grant StartSession only to trusted administrators.</text>
+</svg>

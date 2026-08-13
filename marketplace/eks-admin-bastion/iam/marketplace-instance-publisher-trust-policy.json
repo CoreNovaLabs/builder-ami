@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SellerRootWithMfaOnly",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::582920575154:root"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalArn": "arn:aws:iam::582920575154:root"
+        },
+        "Bool": {
+          "aws:MultiFactorAuthPresent": "true"
+        }
+      }
+    }
+  ]
+}

@@ -1,96 +1,66 @@
-# CoreNova EKS Admin Bastion deployment assets
+# CoreNova EKS SSM Bastion product assets
 
-The CloudFormation template in this directory deploys the AMI as a private,
-SSM-first EKS administration host. It is a local release asset and is not yet a
-published AWS Marketplace CloudFormation delivery option.
+This directory is the source of truth for the EKS SSM Bastion Marketplace
+delivery experience. The current public Marketplace version remains a
+standalone AMI. These assets prepare a later, additive version with three
+delivery options:
 
-## Prerequisites
+1. **Identity Relay** — recommended for production. A private SSM relay carries
+   encrypted traffic to the EKS API while kubectl authenticates as the operator.
+   The EC2 role has no EKS permissions.
+2. **Audited Workstation** — for recorded administrative shells. SSM runs a
+   non-root shell and streams its content to retained CloudWatch Logs. Shell
+   users share a scoped EC2 role.
+3. **Standalone AMI** — compatibility and advanced manual deployment. The buyer
+   must configure networking, IAM, SSM, and EKS authorization.
 
-- Subscribe to the x86_64 or ARM64 listing and copy its AMI ID in `us-east-1`.
-- Choose an architecture-compatible instance type (`t3.small` for x86_64 or
-  `t4g.small` for ARM64 are the normal starting points).
-- Use a private subnet with NAT or VPC endpoints for Systems Manager and the
-  AWS APIs used by the administration tools.
-- Install AWS CLI v2 and the Session Manager plugin on the operator workstation.
-- For automatic EKS Access Entry creation, the existing cluster authentication
-  mode must be `API` or `API_AND_CONFIG_MAP`.
-- The deployer must be allowed to create IAM, EC2, and optional EKS Access Entry
-  resources. CloudFormation requires acknowledgement of IAM capabilities.
+AWS Marketplace can open the CloudFormation console for the two guided delivery
+options. A CoreNova website launch link is optional for documentation and
+marketing; it is not required for the buyer to launch the product.
 
-## Deploy
+## Customer documentation
 
-```bash
-aws cloudformation deploy \
-  --stack-name corenova-eks-admin-bastion \
-  --template-file cloudformation/eks-admin-bastion.yaml \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    AmiId=ami-REPLACE_ME \
-    VpcId=vpc-REPLACE_ME \
-    SubnetId=subnet-REPLACE_ME \
-    ClusterName=cluster-REPLACE_ME \
-    InstanceType=t3.small \
-    CreateEksAccessEntry=Yes \
-    EksAccessPolicyName=AmazonEKSViewPolicy
-```
+- [Choose a mode](docs/choose-a-mode.md)
+- [Quickstart](docs/quickstart.md)
+- [Security model](docs/security.md)
+- [Upgrade and existing subscribers](docs/upgrade.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Use cases](docs/use-cases.md)
 
-For an EKS cluster with a private API endpoint, set
-`CreateClusterSecurityGroupIngress=Yes` and pass its
-`ClusterSecurityGroupId`. The template then allows TCP 443 from the bastion
-security group to that cluster security group.
+## Release assets and controls
 
-If the cluster still uses the legacy `CONFIG_MAP` authentication mode, set
-`CreateEksAccessEntry=No` and configure the instance role in `aws-auth` through
-your existing cluster-administration process.
+- Source templates: `cloudformation/identity-relay.yaml` and
+  `cloudformation/audited-workstation.yaml`
+- Compatibility template: `cloudformation/eks-admin-bastion.yaml` (not modified
+  or silently substituted)
+- Local Identity Relay client: `client/corenova_eks_connect.py`
+- Buyer IAM starting points: `iam/identity-relay-operator-policy.json` and
+  `iam/audited-workstation-operator-policy.json`
+- Seller submission copy: `cloudformation/marketplace-submission.md`
+- Release runbook: `docs/release-runbook.md`
+- Real-deployment screenshot checklist: `screenshots/README.md`
+- Release evidence template: `releases/evidence-template.md`
 
-## Verify
-
-Use the `StartSessionCommand` stack output, then run:
+Build and validate the delivery assets without changing AWS:
 
 ```bash
-corenova-eks-check
-aws sts get-caller-identity
-aws eks update-kubeconfig --region us-east-1 --name cluster-REPLACE_ME
-kubectl get nodes
+make test-eks-delivery
+make package-eks-delivery
 ```
 
-Before publishing a rebuilt AMI, run the no-ingress smoke test from the
-repository root. The instance profile must use the custom CoreNova SSM core
-policy. A private subnet requires NAT or the required Systems Manager VPC
-endpoints. The cost-capped GitHub workflow instead uses a short-lived public
-IPv4 address in the reviewed public subnet while retaining zero inbound rules.
+The packaged `dist/eks-admin-bastion/{x86_64,arm64}` templates lock the AMI
+architecture and select a compatible default instance type. Upload that exact
+directory to a versioned public S3 prefix before rendering a Marketplace plan.
+
+Rendering a plan does not submit it:
 
 ```bash
-export CORENOVA_SMOKE_SUBNET_ID=subnet-REPLACE_ME
-export CORENOVA_SMOKE_INSTANCE_PROFILE_NAME=profile-REPLACE_ME
-# Set true only for the reviewed ephemeral public-subnet mode.
-export CORENOVA_SMOKE_ALLOW_PUBLIC_IP=false
-
-scripts/smoke_test_eks_admin_bastion_ssm.sh \
-  eks-admin-bastion-al2023-x86_64 \
-  ami-REPLACE_ME
+make render-eks-add-version \
+  PRODUCT=eks-admin-bastion-al2023-x86_64 \
+  AMI=ami-REPLACE_ME \
+  ACCESS_ROLE_ARN=arn:aws:iam::SELLER:role/CoreNovaMarketplaceAmiIngestion \
+  ASSET_BASE_URL=https://PUBLIC-ASSET-BUCKET.s3.amazonaws.com/eks-admin-bastion/vYYYYMMDD-COMMITSHA12
 ```
 
-The test creates an instance with a security group that has no inbound rules,
-waits for Systems Manager registration, runs the product diagnostic, checks
-IMDSv2 and common credential residue, and then terminates the instance. Private
-mode rejects a public address; reviewed cost-capped mode requires one only for
-outbound SSM access. Set `CORENOVA_SMOKE_EKS_CLUSTER_NAME` to also perform a read-only
-`kubectl get nodes` check; the test instance role must already have the intended
-EKS Access Entry.
-
-## Security boundary
-
-The template creates no inbound security-group rules and does not assign a
-public IPv4 address. Anyone permitted to start a shell on the instance can use
-the shared EC2 instance-role credentials and therefore inherits that role's EKS
-permissions. Treat Session Manager access as a trusted-administrator boundary;
-this deployment does not provide per-user EKS identity isolation.
-
-The AWS Marketplace standalone-AMI delivery option is different: its schema
-requires at least one security-group recommendation. For that path, CoreNova
-recommends TCP 22 only from RFC1918 private ranges as an optional SSH fallback.
-The CloudFormation template is the intended zero-ingress, SSM-first deployment
-path and must be added to the Marketplace version as an `AMI with
-CloudFormation` delivery option before that launch experience is advertised as
-available in the listing.
+Use Catalog API `Intent=VALIDATE`, complete both non-production deployment
+tests, and review the evidence record before any `APPLY` request.

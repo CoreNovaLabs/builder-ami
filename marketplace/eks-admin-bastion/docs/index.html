@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>CoreNova EKS SSM Bastion — Buyer Guide</title>
+  <style>
+    :root { font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f4f7fb; }
+    body { margin: 0; }
+    main { max-width: 980px; margin: auto; padding: 48px 24px 72px; }
+    header, section { background: #fff; border: 1px solid #dce4ef; border-radius: 16px; box-shadow: 0 8px 28px rgba(30, 55, 90, .07); }
+    header { padding: 36px; background: linear-gradient(135deg, #102a43, #146c94); color: #fff; }
+    header p { max-width: 720px; color: #dff3ff; }
+    section { margin-top: 22px; padding: 28px 32px; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0 0 12px; font-size: clamp(2rem, 5vw, 3.2rem); }
+    h2 { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card { border: 1px solid #dce4ef; border-radius: 12px; padding: 20px; }
+    .recommended { border-color: #168aad; box-shadow: inset 0 4px #168aad; }
+    .badge { display: inline-block; padding: 4px 9px; border-radius: 999px; background: #dff5ff; color: #075985; font-size: .78rem; font-weight: 700; }
+    a { color: #0969a2; font-weight: 650; }
+    code { padding: 2px 5px; border-radius: 5px; background: #edf2f7; }
+    .steps li { margin: 10px 0; }
+    .warning { border-left: 5px solid #d97706; background: #fff8e7; }
+    footer { color: #526277; margin-top: 24px; text-align: center; font-size: .9rem; }
+    @media (prefers-color-scheme: dark) {
+      :root { color: #e7edf5; background: #09111f; }
+      header, section { background: #101b2b; border-color: #29384e; }
+      .card { border-color: #34445b; }
+      a { color: #67c7ef; }
+      code { background: #26364a; }
+      .warning { background: #33260e; }
+      footer { color: #a9b6c8; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="badge">AWS Marketplace buyer guide</span>
+    <h1>CoreNova EKS SSM Bastion</h1>
+    <p>Private, zero-ingress EKS administration through AWS Systems Manager. Choose per-operator identity or a streamed administrative shell without exposing SSH or a public IPv4 address.</p>
+  </header>
+
+  <section>
+    <h2>Choose a security mode</h2>
+    <div class="grid">
+      <article class="card recommended">
+        <span class="badge">Recommended for production</span>
+        <h3>Identity Relay</h3>
+        <p>Kubectl tokens are generated from each operator’s local AWS role. The relay instance has no EKS API permissions. Use this when individual identity and namespace scope matter most.</p>
+        <a href="choose-a-mode.md">Compare identity and audit tradeoffs</a>
+      </article>
+      <article class="card">
+        <h3>Audited Workstation</h3>
+        <p>Operators share a scoped EC2 role, while SSM runs a non-root shell and streams the standard session to retained CloudWatch Logs. Use this when shell transcripts are required.</p>
+        <a href="security.md">Read the security boundaries</a>
+      </article>
+      <article class="card">
+        <h3>Standalone AMI</h3>
+        <p>The compatibility path for teams with their own Terraform, networking, IAM, and access-entry automation. You configure every control yourself.</p>
+        <a href="quickstart.md">Open the launch quickstart</a>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Launch directly in AWS</h2>
+    <ol class="steps">
+      <li>Subscribe in AWS Marketplace and choose <strong>Continue to Launch</strong>.</li>
+      <li>Select <strong>Custom Launch</strong>, then Identity Relay or Audited Workstation.</li>
+      <li>Choose <strong>Launch with CloudFormation Console</strong>.</li>
+      <li>Select the VPC, private subnet, EKS cluster, and cluster security group.</li>
+      <li>Keep <strong>View + Namespace + default</strong> for the first launch.</li>
+    </ol>
+    <p>No CoreNova website redirect is required. The Marketplace AMI ID is injected into the template automatically.</p>
+  </section>
+
+  <section>
+    <h2>Versioned tools and policies</h2>
+    <div class="grid">
+      <div class="card"><h3>Identity Relay client</h3><p>Download the exact helper shipped with this version.</p><a href="../client/corenova_eks_connect.py" download>Download Python client</a></div>
+      <div class="card"><h3>Identity operator IAM</h3><p>Replace placeholders and review in your IAM process.</p><a href="../iam/identity-relay-operator-policy.json">Open policy example</a></div>
+      <div class="card"><h3>Audited operator IAM</h3><p>Restrict operators to the one instance and session document.</p><a href="../iam/audited-workstation-operator-policy.json">Open policy example</a></div>
+    </div>
+  </section>
+
+  <section class="warning">
+    <h2>Existing subscribers and upgrades</h2>
+    <p>This release does not modify running instances, stacks, kubeconfigs, IAM roles, or EKS access entries. Deploy the new mode in parallel, validate it, observe a rollback window, and remove the previous instance only when you choose.</p>
+    <p><a href="upgrade.md">Read the migration and rollback guide</a></p>
+  </section>
+
+  <section>
+    <h2>More documentation</h2>
+    <ul>
+      <li><a href="quickstart.md">Detailed quickstart</a></li>
+      <li><a href="use-cases.md">Use cases</a></li>
+      <li><a href="troubleshooting.md">Troubleshooting</a></li>
+      <li><a href="security.md">Security model and shared responsibilities</a></li>
+    </ul>
+    <p>Support: <a href="mailto:support@corenovacloud.com">support@corenovacloud.com</a></p>
+  </section>
+
+  <footer>CoreNova Intelligence Limited · Version-specific buyer assets published with the Marketplace release</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,253 @@
+name: Validate dual-architecture EKS release
+run-name: Validate ${{ inputs.version_title }} at ${{ inputs.expected_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      x86_candidate_run_id:
+        description: Successful x86 candidate run ID
+        required: true
+        type: string
+      x86_candidate_attempt:
+        description: x86 candidate run attempt
+        required: true
+        default: "1"
+        type: string
+      arm_candidate_run_id:
+        description: Successful ARM candidate run ID
+        required: true
+        type: string
+      arm_candidate_attempt:
+        description: ARM candidate run attempt
+        required: true
+        default: "1"
+        type: string
+      x86_e2e_run_id:
+        description: Successful x86 E2E run ID
+        required: true
+        type: string
+      x86_e2e_attempt:
+        description: x86 E2E run attempt
+        required: true
+        default: "1"
+        type: string
+      arm_e2e_run_id:
+        description: Successful ARM E2E run ID
+        required: true
+        type: string
+      arm_e2e_attempt:
+        description: ARM E2E run attempt
+        required: true
+        default: "1"
+        type: string
+      asset_run_id:
+        description: Successful immutable asset run ID
+        required: true
+        type: string
+      asset_attempt:
+        description: Asset run attempt
+        required: true
+        default: "1"
+        type: string
+      version_title:
+        description: Fixed version title in vYYYYMMDD format
+        required: true
+        type: string
+      expected_sha:
+        description: Exact 40-character main commit SHA
+        required: true
+        type: string
+      confirmation:
+        description: Type VALIDATE_DUAL_ARCHITECTURE_RELEASE
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: corenova-eks-delivery-catalog
+  cancel-in-progress: false
+
+env:
+  INGESTION_ROLE_ARN: arn:aws:iam::582920575154:role/CoreNovaMarketplaceAmiIngestion
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Check out approved source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify inputs and upstream workflow conclusions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          VERSION_TITLE: ${{ inputs.version_title }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          X86_CANDIDATE_RUN_ID: ${{ inputs.x86_candidate_run_id }}
+          ARM_CANDIDATE_RUN_ID: ${{ inputs.arm_candidate_run_id }}
+          X86_E2E_RUN_ID: ${{ inputs.x86_e2e_run_id }}
+          ARM_E2E_RUN_ID: ${{ inputs.arm_e2e_run_id }}
+          ASSET_RUN_ID: ${{ inputs.asset_run_id }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$VERSION_TITLE" =~ ^v[0-9]{8}$ ]]
+          [[ "$CONFIRMATION" == VALIDATE_DUAL_ARCHITECTURE_RELEASE ]]
+          verify_run() {
+            local run_id="$1" expected_name="$2"
+            [[ "$run_id" =~ ^[0-9]+$ ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "/tmp/run-$run_id.json"
+            jq -e --arg sha "$EXPECTED_SHA" --arg name "$expected_name" \
+              '.name == $name and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+              "/tmp/run-$run_id.json"
+          }
+          verify_run "$X86_CANDIDATE_RUN_ID" "Guarded EKS AMI candidate"
+          verify_run "$ARM_CANDIDATE_RUN_ID" "Guarded EKS AMI candidate"
+          verify_run "$X86_E2E_RUN_ID" "EKS delivery integration test"
+          verify_run "$ARM_E2E_RUN_ID" "EKS delivery integration test"
+          verify_run "$ASSET_RUN_ID" "Publish immutable EKS delivery assets"
+
+      - name: Download immutable upstream evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          X86_CANDIDATE_RUN_ID: ${{ inputs.x86_candidate_run_id }}
+          X86_CANDIDATE_ATTEMPT: ${{ inputs.x86_candidate_attempt }}
+          ARM_CANDIDATE_RUN_ID: ${{ inputs.arm_candidate_run_id }}
+          ARM_CANDIDATE_ATTEMPT: ${{ inputs.arm_candidate_attempt }}
+          X86_E2E_RUN_ID: ${{ inputs.x86_e2e_run_id }}
+          X86_E2E_ATTEMPT: ${{ inputs.x86_e2e_attempt }}
+          ARM_E2E_RUN_ID: ${{ inputs.arm_e2e_run_id }}
+          ARM_E2E_ATTEMPT: ${{ inputs.arm_e2e_attempt }}
+          ASSET_RUN_ID: ${{ inputs.asset_run_id }}
+          ASSET_ATTEMPT: ${{ inputs.asset_attempt }}
+        run: |
+          mkdir -p operations/upstream/{x86-candidate,arm-candidate,x86-e2e,arm-e2e,assets}
+          gh run download "$X86_CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "candidate-build-${X86_CANDIDATE_RUN_ID}-${X86_CANDIDATE_ATTEMPT}" \
+            --dir operations/upstream/x86-candidate
+          gh run download "$ARM_CANDIDATE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "candidate-build-${ARM_CANDIDATE_RUN_ID}-${ARM_CANDIDATE_ATTEMPT}" \
+            --dir operations/upstream/arm-candidate
+          gh run download "$X86_E2E_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "delivery-e2e-${X86_E2E_RUN_ID}-${X86_E2E_ATTEMPT}" \
+            --dir operations/upstream/x86-e2e
+          gh run download "$ARM_E2E_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "delivery-e2e-${ARM_E2E_RUN_ID}-${ARM_E2E_ATTEMPT}" \
+            --dir operations/upstream/arm-e2e
+          gh run download "$ASSET_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "delivery-assets-${ASSET_RUN_ID}-${ASSET_ATTEMPT}" \
+            --dir operations/upstream/assets
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: Install hash-locked runtime
+        run: python -m pip install --require-hashes --requirement requirements.lock
+
+      - name: Verify evidence graph and render one atomic plan
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          VERSION_TITLE: ${{ inputs.version_title }}
+        run: |
+          x86_manifest=operations/upstream/x86-candidate/build-manifest.json
+          arm_manifest=operations/upstream/arm-candidate/build-manifest.json
+          [[ "$(jq -r .commit "$x86_manifest")" == "$EXPECTED_SHA" ]]
+          [[ "$(jq -r .commit "$arm_manifest")" == "$EXPECTED_SHA" ]]
+          [[ "$(jq -r .product "$x86_manifest")" == eks-admin-bastion-al2023-x86_64 ]]
+          [[ "$(jq -r .product "$arm_manifest")" == eks-admin-bastion-al2023-arm64 ]]
+          x86_ami="$(jq -r .ami_id "$x86_manifest")"
+          arm_ami="$(jq -r .ami_id "$arm_manifest")"
+          x86_source="$(jq -r .source_ami_id "$x86_manifest")"
+          arm_source="$(jq -r .source_ami_id "$arm_manifest")"
+          x86_e2e="$(find operations/upstream/x86-e2e -path '*/e2e/result.json' -print -quit)"
+          arm_e2e="$(find operations/upstream/arm-e2e -path '*/e2e/result.json' -print -quit)"
+          [[ -n "$x86_e2e" && -n "$arm_e2e" ]]
+          jq -e --arg ami "$x86_ami" '.status == "SUCCEEDED" and .product == "eks-admin-bastion-al2023-x86_64" and .ami_id == $ami' "$x86_e2e"
+          jq -e --arg ami "$arm_ami" '.status == "SUCCEEDED" and .product == "eks-admin-bastion-al2023-arm64" and .ami_id == $ami' "$arm_e2e"
+          asset_evidence="$(find operations/upstream/assets -name evidence.json -print -quit)"
+          [[ -n "$asset_evidence" ]]
+          base_url="$(jq -r .base_url "$asset_evidence")"
+          jq -e --arg sha "$EXPECTED_SHA" --arg version "$VERSION_TITLE" \
+            '.status == "SUCCEEDED" and .commit == $sha and .version == $version' "$asset_evidence"
+          [[ "$base_url" == "https://corenova-marketplace-assets-582920575154.s3.amazonaws.com/eks-admin-bastion/${VERSION_TITLE}-${EXPECTED_SHA:0:12}" ]]
+          mkdir -p plans operations/reports/validate
+          CORENOVA_PRODUCTS_FILE=products.candidates.yaml python scripts/render_marketplace_changeset.py \
+            eks-admin-bastion-al2023-x86_64 "$x86_ami" \
+            --source-ami-id "$x86_source" --access-role-arn "$INGESTION_ROLE_ARN" \
+            --include-eks-cloudformation --asset-base-url "$base_url" \
+            --version-title "$VERSION_TITLE" --output-dir plans
+          CORENOVA_PRODUCTS_FILE=products.candidates.yaml python scripts/render_marketplace_changeset.py \
+            eks-admin-bastion-al2023-arm64 "$arm_ami" \
+            --source-ami-id "$arm_source" --access-role-arn "$INGESTION_ROLE_ARN" \
+            --include-eks-cloudformation --asset-base-url "$base_url" \
+            --version-title "$VERSION_TITLE" --output-dir plans
+          python scripts/compose_eks_release_changeset.py \
+            plans/eks-admin-bastion-al2023-x86_64-add-version.json \
+            plans/eks-admin-bastion-al2023-arm64-add-version.json \
+            --output operations/reports/validate/release-plan.json
+
+      - name: Assume Marketplace VALIDATE-only role
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: arn:aws:iam::582920575154:role/CoreNovaMarketplaceValidatorRole
+          aws-region: us-east-1
+          audience: sts.amazonaws.com
+          allowed-account-ids: "582920575154"
+          mask-aws-account-id: true
+          unset-current-credentials: true
+          role-duration-seconds: 3600
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Submit VALIDATE and wait for terminal success
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          plan=operations/reports/validate/release-plan.json
+          CORENOVA_PRODUCTS_FILE=products.candidates.yaml python scripts/submit_changeset.py \
+            "$plan" --products-file products.candidates.yaml --intent VALIDATE \
+            > operations/reports/validate/start.json
+          change_set_id="$(jq -r .ChangeSetId operations/reports/validate/start.json)"
+          [[ "$change_set_id" == change-set/* ]]
+          status=""
+          for _ in $(seq 1 240); do
+            aws marketplace-catalog describe-change-set \
+              --region us-east-1 --catalog AWSMarketplace \
+              --change-set-id "$change_set_id" --output json \
+              > operations/reports/validate/final.json
+            status="$(jq -r .Status operations/reports/validate/final.json)"
+            case "$status" in
+              SUCCEEDED) break ;;
+              FAILED|CANCELLED) jq -r '.FailureDescription // "VALIDATE failed"' operations/reports/validate/final.json >&2; exit 1 ;;
+            esac
+            sleep 10
+          done
+          [[ "$status" == SUCCEEDED ]]
+          jq -n \
+            --arg status "$status" --arg commit "$EXPECTED_SHA" \
+            --arg plan_sha256 "$(sha256sum "$plan" | cut -d' ' -f1)" \
+            --arg change_set_id "$change_set_id" \
+            '{status:$status,commit:$commit,plan_sha256:$plan_sha256,change_set_id:$change_set_id}' \
+            > operations/reports/validate/evidence.json
+
+      - name: Upload Catalog validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: delivery-validate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: operations/reports/validate
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 180

@@ -7,6 +7,8 @@
       - jq
       - less
       - lsof
+      - python3
+      - screen
       - tar
       - tmux
       - unzip
@@ -49,6 +51,24 @@
     - /opt/corenova/eks
     - /opt/corenova/eks/bin
     - /opt/corenova/eks/examples
+
+- name: Create non-privileged Run As operator
+  ansible.builtin.user:
+    name: corenova-operator
+    comment: CoreNova audited Session Manager operator
+    create_home: true
+    home: /home/corenova-operator
+    shell: /bin/bash
+    password_lock: true
+    state: present
+
+- name: Create operator kube directory
+  ansible.builtin.file:
+    path: /home/corenova-operator/.kube
+    state: directory
+    owner: corenova-operator
+    group: corenova-operator
+    mode: "0700"
 
 - name: Write EKS admin tool installer
   ansible.builtin.copy:
@@ -291,6 +311,18 @@
   ansible.builtin.command: /usr/local/bin/corenova-eks-check
   changed_when: false
 
+- name: Install EKS bastion doctor
+  ansible.builtin.copy:
+    src: corenova-eks-doctor
+    dest: /usr/local/bin/corenova-eks-doctor
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Verify EKS bastion doctor syntax
+  ansible.builtin.command: python3 -m py_compile /usr/local/bin/corenova-eks-doctor
+  changed_when: false
+
 - name: Write EKS admin shell profile
   ansible.builtin.copy:
     dest: /etc/profile.d/corenova-eks-admin.sh
@@ -320,8 +352,9 @@
       Install the Session Manager plugin on the operator workstation before connecting.
       Start with:
         corenova-eks-check
+        corenova-eks-doctor --cluster <cluster> --region <region>
         aws eks update-kubeconfig --region <region> --name <cluster>
-        kubectl get nodes
+        kubectl auth can-i get pods --namespace <namespace>
 
       Examples and IAM templates:
         /opt/corenova/eks/examples
@@ -399,6 +432,7 @@
 
       ```bash
       corenova-eks-check
+      corenova-eks-doctor --output json
       aws sts get-caller-identity
       aws eks list-clusters --region us-east-1
       ```
@@ -410,7 +444,7 @@
 
       ```bash
       aws eks update-kubeconfig --region us-east-1 --name CLUSTER_NAME
-      kubectl get nodes
+      kubectl auth can-i get pods --namespace default
       ```
 
       Before running kubectl, make sure the instance-role ARN has an EKS Access Entry,

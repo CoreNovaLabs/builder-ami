@@ -35,6 +35,31 @@ call that omits `Intent` (the AWS default is `APPLY`). It can pass only the
 existing `CoreNovaMarketplaceAmiIngestion` role, and only to
 `assets.marketplace.amazonaws.com`.
 
+## Delivery release roles
+
+Run `scripts/bootstrap_eks_delivery_release_roles.sh` once from the seller root
+caller after reviewing every policy. Root only creates the boundaries, roles,
+and versioned public asset bucket; it never builds, tests, uploads assets, or
+calls Marketplace Catalog.
+
+- `CoreNovaMarketplaceAssetPublisherRole` can put/read only versioned EKS assets
+  in the dedicated bucket and explicitly cannot delete objects or mutate bucket
+  controls.
+- `CoreNovaEksDeliveryE2ERole` can operate fixed-prefix test stacks, use the
+  required SSM documents, read safety state, and remove retained test logs. It
+  passes only `CoreNovaEksDeliveryE2ECloudFormationRole` to CloudFormation.
+- `CoreNovaEksDeliveryE2ECloudFormationRole` is a service role for disposable
+  EKS/VPC/bastion resources. Its attached policy is also its permissions
+  boundary.
+- `CoreNovaMarketplaceDeliveryPublisherRole` trusts only the immutable repo's
+  `marketplace-production` environment. It can APPLY only
+  `AddDeliveryOptions` for the two exact EKS products and pass only the existing
+  Marketplace ingestion role.
+
+The release script independently requires a two-product plan, three delivery
+options per product, the same version title, the exact successful VALIDATE
+evidence, matching commit SHA, and matching plan SHA-256.
+
 ## Manual metadata publisher
 
 Do not create a GitHub OIDC Publisher. If a human Publisher is introduced after
@@ -51,6 +76,20 @@ credentials.
 AWS currently documents `VALIDATE` for adding versions to single-AMI products.
 Do not assume it provides a dry run for `UpdateInformation`; metadata publishing
 therefore requires the narrowly scoped publisher role and a human diff review.
+
+## Manual instance-type publisher
+
+`CoreNovaMarketplaceInstancePublisherRole` is a separate, temporary publisher
+for reviewed instance-type expansion plans. Its trust requires an MFA-authenticated
+seller-root session. Its policy and permissions boundary allow only
+`AddInstanceTypes`, `AddDimensions`, and `UpdatePricingTerms` against the two EKS
+Admin products and their exact released public offers. The guarded submitter
+also requires the live product delta, dimension additions, and complete hourly
+rate card to match `products.candidates.yaml` before it calls `APPLY`.
+
+Bootstrap it once with `scripts/bootstrap_marketplace_instance_publisher.sh`.
+Use an assumed session named `CoreNovaMarketplaceInstancePublisherRole`, then
+submit each generated plan with `scripts/submit_add_instance_types_changeset.py`.
 
 ## Suggested profile names
 
@@ -89,6 +128,21 @@ the first mutating AWS call:
   `APPLY` path.
 
 All of these scripts reject account-root credentials.
+
+## Buyer operator policy examples
+
+The product also ships two customer-side starting points. They are not deployed
+into the seller account:
+
+- `identity-relay-operator-policy.json` permits stack/cluster discovery and the
+  AWS-managed remote-host forwarding document for one relay instance.
+- `audited-workstation-operator-policy.json` permits the one stack-created
+  session document on one workstation instance.
+
+Replace every uppercase placeholder before use. Both policies scope session
+resume/termination and the SSM message data channel to the caller's own session
+ARN. Buyers must still apply their permission boundaries, SCPs, EKS Access
+Entries, and access-review process.
 
 ## Enforced tightening
 

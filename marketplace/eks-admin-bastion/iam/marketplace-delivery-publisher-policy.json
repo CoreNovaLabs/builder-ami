@@ -1,0 +1,71 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadCandidateImages",
+      "Effect": "Allow",
+      "Action": "ec2:DescribeImages",
+      "Resource": "*",
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    },
+    {
+      "Sid": "CatalogRead",
+      "Effect": "Allow",
+      "Action": ["aws-marketplace:ListEntities", "aws-marketplace:ListChangeSets"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeGuardedEntities",
+      "Effect": "Allow",
+      "Action": ["aws-marketplace:DescribeEntity", "aws-marketplace:DescribeChangeSet"],
+      "Resource": [
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/AmiProduct/prod-hapxotc2y7jmi",
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/AmiProduct/prod-nspz2g6ki6qvo",
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/ChangeSet/*"
+      ]
+    },
+    {
+      "Sid": "ApplyOnlyNewEksDeliveryVersions",
+      "Effect": "Allow",
+      "Action": "aws-marketplace:StartChangeSet",
+      "Resource": [
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/AmiProduct/prod-hapxotc2y7jmi",
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/AmiProduct/prod-nspz2g6ki6qvo",
+        "arn:aws:aws-marketplace:us-east-1:582920575154:AWSMarketplace/ChangeSet/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws-marketplace:Intent": "APPLY",
+          "catalog:ChangeType": "AddDeliveryOptions"
+        }
+      }
+    },
+    {
+      "Sid": "DenyNonApplyIntent",
+      "Effect": "Deny",
+      "Action": "aws-marketplace:StartChangeSet",
+      "Resource": "*",
+      "Condition": {"StringNotEquals": {"aws-marketplace:Intent": "APPLY"}}
+    },
+    {
+      "Sid": "DenyOtherChangeTypes",
+      "Effect": "Deny",
+      "Action": "aws-marketplace:StartChangeSet",
+      "Resource": "*",
+      "Condition": {"StringNotEquals": {"catalog:ChangeType": "AddDeliveryOptions"}}
+    },
+    {
+      "Sid": "ReadIngestionRole",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::582920575154:role/CoreNovaMarketplaceAmiIngestion"
+    },
+    {
+      "Sid": "PassOnlyIngestionRoleToMarketplaceAssets",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::582920575154:role/CoreNovaMarketplaceAmiIngestion",
+      "Condition": {"StringEquals": {"iam:PassedToService": "assets.marketplace.amazonaws.com"}}
+    }
+  ]
+}

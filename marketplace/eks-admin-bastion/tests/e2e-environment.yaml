@@ -1,0 +1,228 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Disposable, no-node EKS environment for CoreNova delivery integration tests.
+
+Parameters:
+  RunnerRoleArn:
+    Type: String
+    AllowedPattern: '^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/.+$'
+  RunId:
+    Type: String
+    AllowedPattern: '^[0-9A-Za-z-]+$'
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.98.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - {Key: Name, Value: !Sub 'corenova-eks-e2e-${RunId}'}
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.98.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub 'corenova-eks-e2e-${RunId}-public-a'}
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.98.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name, Value: !Sub 'corenova-eks-e2e-${RunId}-public-b'}
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.98.10.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - {Key: Name, Value: !Sub 'corenova-eks-e2e-${RunId}-private-a'}
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  EksServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /corenova-eks-e2e/
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: eks.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEKSClusterPolicy'
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  Cluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub 'corenova-eks-e2e-${RunId}'
+      RoleArn: !GetAtt EksServiceRole.Arn
+      AccessConfig:
+        AuthenticationMode: API
+        BootstrapClusterCreatorAdminPermissions: true
+      ResourcesVpcConfig:
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: false
+        SubnetIds:
+          - !Ref PublicSubnetA
+          - !Ref PublicSubnetB
+          - !Ref PrivateSubnetA
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+            - Type: authenticator
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+        - {Key: RunId, Value: !Ref RunId}
+
+  OperatorOneRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /corenova-eks-e2e/
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {AWS: !Ref RunnerRoleArn}
+            Action: sts:AssumeRole
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  OperatorTwoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /corenova-eks-e2e/
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {AWS: !Ref RunnerRoleArn}
+            Action: sts:AssumeRole
+      Tags:
+        - {Key: Project, Value: builder-ami}
+        - {Key: Purpose, Value: eks-delivery-e2e}
+
+  OperatorTwoAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref Cluster
+      PrincipalArn: !GetAtt OperatorTwoRole.Arn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: !Sub 'arn:${AWS::Partition}:eks::aws:cluster-access-policy/AmazonEKSViewPolicy'
+          AccessScope:
+            Type: namespace
+            Namespaces: [default]
+
+Outputs:
+  VpcId: {Value: !Ref Vpc}
+  PrivateSubnetId: {Value: !Ref PrivateSubnetA}
+  ClusterName: {Value: !Ref Cluster}
+  ClusterSecurityGroupId: {Value: !GetAtt Cluster.ClusterSecurityGroupId}
+  OperatorOneRoleArn: {Value: !GetAtt OperatorOneRole.Arn}
+  OperatorTwoRoleArn: {Value: !GetAtt OperatorTwoRole.Arn}

@@ -183,19 +183,27 @@ Web: https://www.corenovacloud.com/
 Include AWS Region, AMI ID, EC2 Instance ID, instance type, and steps to reproduce."""
 
 
-def release_notes(product: dict[str, Any], ami_id: str, source_ami_id: str | None = None) -> str:
+def release_notes(
+    product: dict[str, Any],
+    ami_id: str,
+    source_ami_id: str | None = None,
+    release_version: str | None = None,
+) -> str:
+    effective_version = release_version or version_title()
     if product.get("profile") == "eks-admin-bastion":
         source_line = f"\nSource AMI: {source_ami_id} (us-east-1)" if source_ami_id else ""
         return f"""{product["title"]}
 
-Version: {version_title()}
+Version: {effective_version}
 
-Initial CoreNova EKS Admin Bastion release.
+This release adds the Identity Relay and Audited Workstation deployment modes
+while retaining the standalone AMI delivery option for compatibility.
 
 Baseline:
 - Amazon Linux 2023 hardened base with current upstream security updates at build time.
 - SSH key-only access, root login disabled, auditd, rsyslog, chrony, firewalld, and AIDE baseline.
 - Amazon SSM Agent enabled for Session Manager access.
+- Non-root corenova-operator Run As account and read-only corenova-eks-doctor diagnostics.
 - EKS administration tools installed: AWS CLI v2, kubectl multi-version selector, Helm, eksctl, k9s, kubectx, kubens, jq, and yq.
 - EKS helper scripts and starter IAM / Access Entry examples installed under /opt/corenova/eks; buyers must review and scope them.
 - Cloud-init cleaned before image capture.
@@ -206,12 +214,15 @@ Storage layout: {product["layout"]}
 Filesystem: {product["filesystem"]}{source_line}
 AMI: {ami_id} (us-east-1)
 
-Security note: This AMI is designed for SSM-first administration. Keep inbound SSH closed unless your organization explicitly requires SSH fallback."""
+Security note: Identity Relay keeps EKS authorization on each operator identity.
+Audited Workstation streams standard shell sessions to CloudWatch Logs but uses
+a shared EC2 role. Session Manager cannot log port-forwarded session contents.
+Keep inbound SSH closed unless your organization explicitly requires fallback."""
 
     source_line = f"\nSource AMI: {source_ami_id} (us-east-1)" if source_ami_id else ""
     return f"""{product["title"]}
 
-Version: {version_title()}
+Version: {effective_version}
 
 This release rebuilds the AMI with the standardized CoreNova builder-ami pipeline.
 
@@ -242,11 +253,18 @@ AMI: {ami_id} (us-east-1).
 
 **Recommended launch model**
 
-1. Subscribe in AWS Marketplace, then launch in us-east-1.
+For versions that display CloudFormation delivery options in AWS Marketplace,
+choose Identity Relay for per-user EKS authorization or Audited Workstation for
+a streamed administrative shell. AWS Marketplace opens the CloudFormation
+console; a separate CoreNova website launch link is not required.
+
+For the standalone AMI compatibility path:
+
+1. Subscribe in AWS Marketplace, then launch in the supported Region.
 2. Place the instance in a private subnet where it can reach AWS APIs.
-3. Attach an IAM role with AmazonSSMManagedInstanceCore and EKS permissions that your team has reviewed and scoped.
-4. Do not open inbound SSH to the internet. Use AWS Systems Manager Session Manager for shell access.
-5. Review EC2 instance, EBS, data transfer, NAT gateway, VPC endpoint, and AWS Marketplace software charges before launch.
+3. Attach an IAM role with AmazonSSMManagedInstanceCore and only the EKS permissions your team has reviewed and scoped.
+4. Do not open inbound SSH to the internet. Use AWS Systems Manager Session Manager.
+5. Review EC2 instance, EBS, data transfer, NAT gateway, VPC endpoint, CloudWatch Logs, and software charges.
 
 **First connection with Session Manager**
 
@@ -263,10 +281,12 @@ ssh -i your-key.pem {product["ssh_username"]}@YOUR_PRIVATE_IP
 **EKS setup**
 
 aws eks update-kubeconfig --region YOUR_REGION --name YOUR_CLUSTER_NAME
-kubectl get nodes
+kubectl auth can-i get pods --namespace YOUR_NAMESPACE
+kubectl get pods --namespace YOUR_NAMESPACE
 helm version
 eksctl version
 corenova-eks-check
+corenova-eks-doctor --cluster YOUR_CLUSTER_NAME --region YOUR_REGION
 
 **Installed tools**
 
@@ -298,6 +318,11 @@ passwordauthentication no
 The AMI does not include hardcoded passwords, private keys, AWS credentials, kubeconfigs, or customer data. Customer-created keys, kubeconfigs, and Kubernetes secrets remain in the buyer's AWS account.
 
 Anyone who can start a shell on this host can use its shared EC2 instance-role credentials and inherits that role's EKS permissions. Treat Session Manager access as a trusted-administrator boundary; the AMI does not provide per-user EKS identity isolation.
+
+Identity Relay is the exception: its EC2 role has no EKS permissions and the
+local kubectl client uses the operator's AWS identity. Port forwarding content
+cannot be recorded by Session Manager, so use Audited Workstation when recorded
+shell commands are the primary requirement.
 
 **Encryption**
 

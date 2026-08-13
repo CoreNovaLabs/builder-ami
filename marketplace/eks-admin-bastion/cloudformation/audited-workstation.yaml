@@ -1,0 +1,333 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Corenova EKS SSM Bastion - Audited Workstation. Creates a private,
+  zero-ingress administrative workstation with a dedicated SSM session
+  document, CloudWatch streaming, Run As, and least-privilege EKS access.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network and cluster
+        Parameters:
+          - VpcId
+          - SubnetId
+          - ClusterName
+          - ClusterSecurityGroupId
+          - CreateClusterSecurityGroupIngress
+      - Label:
+          default: Kubernetes authorization
+        Parameters:
+          - EksAccessPolicyName
+          - AccessScope
+          - KubernetesNamespace
+          - PrivilegedAccessAcknowledgement
+      - Label:
+          default: Session audit
+        Parameters:
+          - AuditLogRetentionDays
+          - IdleSessionTimeoutMinutes
+          - MaxSessionDurationMinutes
+      - Label:
+          default: Bastion instance
+        Parameters:
+          - AmiId
+          - InstanceArchitecture
+          - InstanceType
+          - RootVolumeSize
+
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Supplied automatically when launched from AWS Marketplace.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC containing the private subnet and EKS control-plane endpoint.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Private subnet with SSM connectivity through NAT or VPC endpoints.
+  ClusterName:
+    Type: String
+    MinLength: 1
+    MaxLength: 100
+    AllowedPattern: '^[0-9A-Za-z][A-Za-z0-9_-]*$'
+  ClusterSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: >-
+      Existing EKS cluster security group. Select the group attached to the
+      intended EKS control plane even when ingress is managed elsewhere.
+  CreateClusterSecurityGroupIngress:
+    Type: String
+    Default: 'Yes'
+    AllowedValues: ['Yes', 'No']
+  EksAccessPolicyName:
+    Type: String
+    Default: AmazonEKSViewPolicy
+    AllowedValues:
+      - AmazonEKSViewPolicy
+      - AmazonEKSEditPolicy
+      - AmazonEKSAdminPolicy
+      - AmazonEKSClusterAdminPolicy
+    Description: AmazonEKSViewPolicy is the production-safe default.
+  AccessScope:
+    Type: String
+    Default: Namespace
+    AllowedValues: [Namespace, Cluster]
+  KubernetesNamespace:
+    Type: String
+    Default: default
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+  PrivilegedAccessAcknowledgement:
+    Type: String
+    Default: NotRequiredForView
+    AllowedValues:
+      - NotRequiredForView
+      - IUnderstandAllShellUsersShareThisRole
+    Description: >-
+      Required acknowledgement when Edit, Admin, or ClusterAdmin is selected.
+      All shell users of this instance inherit the same EC2 role.
+  AuditLogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [7, 14, 30, 60, 90, 120, 180, 365, 731, 1827, 3653]
+  IdleSessionTimeoutMinutes:
+    Type: String
+    Default: '20'
+    AllowedValues: ['5', '10', '15', '20', '30', '45', '60']
+  MaxSessionDurationMinutes:
+    Type: String
+    Default: '60'
+    AllowedValues: ['15', '30', '60', '90', '120', '180', '240', '480', '720', '960', '1440']
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t4g.micro
+      - t4g.small
+      - t4g.medium
+      - t4g.large
+  InstanceArchitecture:
+    Type: String
+    Default: x86_64
+    AllowedValues: [x86_64, arm64]
+    Description: >-
+      Architecture of the subscribed AMI. Marketplace release assets lock this
+      value to the architecture of the product listing.
+  RootVolumeSize:
+    Type: Number
+    Default: 20
+    MinValue: 8
+    MaxValue: 200
+
+Rules:
+  RequireAcknowledgementForPrivilegedAccess:
+    RuleCondition: !Not [!Equals [!Ref EksAccessPolicyName, AmazonEKSViewPolicy]]
+    Assertions:
+      - Assert: !Equals
+          - !Ref PrivilegedAccessAcknowledgement
+          - IUnderstandAllShellUsersShareThisRole
+        AssertDescription: Privileged EKS access requires explicit shared-role acknowledgement.
+  RequireArchitectureCompatibleInstanceType:
+    Assertions:
+      - Assert: !Or
+          - !And
+            - !Equals [!Ref InstanceArchitecture, x86_64]
+            - !Contains
+              - [t3.micro, t3.small, t3.medium, t3.large]
+              - !Ref InstanceType
+          - !And
+            - !Equals [!Ref InstanceArchitecture, arm64]
+            - !Contains
+              - [t4g.micro, t4g.small, t4g.medium, t4g.large]
+              - !Ref InstanceType
+        AssertDescription: InstanceType must match the Marketplace AMI architecture.
+
+Conditions:
+  ManageClusterIngress: !Equals [!Ref CreateClusterSecurityGroupIngress, 'Yes']
+  UseClusterScope: !Equals [!Ref AccessScope, Cluster]
+  UseNamespaceScope: !Equals [!Ref AccessScope, Namespace]
+
+Resources:
+  WorkstationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Zero-ingress security group for the Corenova EKS audited workstation
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: SSM, AWS APIs, and EKS API outbound connectivity
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-audited-workstation'
+        - Key: corenova:access-mode
+          Value: audited-workstation
+
+  ClusterApiIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: ManageClusterIngress
+    Properties:
+      GroupId: !Ref ClusterSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !GetAtt WorkstationSecurityGroup.GroupId
+      Description: Corenova EKS audited workstation to Kubernetes API
+
+  AuditLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/corenova/eks-ssm-bastion/${AWS::StackName}'
+      RetentionInDays: !Ref AuditLogRetentionDays
+      Tags:
+        - Key: corenova:access-mode
+          Value: audited-workstation
+
+  AuditedSessionDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Session
+      DocumentFormat: YAML
+      Content:
+        schemaVersion: '1.0'
+        description: Corenova audited EKS administration shell
+        sessionType: Standard_Stream
+        inputs:
+          cloudWatchLogGroupName: !Ref AuditLogGroup
+          cloudWatchEncryptionEnabled: false
+          cloudWatchStreamingEnabled: true
+          idleSessionTimeout: !Ref IdleSessionTimeoutMinutes
+          maxSessionDuration: !Ref MaxSessionDurationMinutes
+          runAsEnabled: true
+          runAsDefaultUser: corenova-operator
+          shellProfile:
+            linux: 'export KUBECONFIG=/home/corenova-operator/.kube/config; cd /home/corenova-operator'
+
+  WorkstationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Shared workstation role with explicitly selected EKS access
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: EksDiscovery
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                Resource: '*'
+        - PolicyName: SessionLogStreaming
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                Resource: !GetAtt AuditLogGroup.Arn
+      Tags:
+        - Key: corenova:access-mode
+          Value: audited-workstation
+
+  WorkstationInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref WorkstationRole
+
+  ClusterScopedAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Condition: UseClusterScope
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt WorkstationRole.Arn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: !Sub 'arn:${AWS::Partition}:eks::aws:cluster-access-policy/${EksAccessPolicyName}'
+          AccessScope:
+            Type: cluster
+
+  NamespaceScopedAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Condition: UseNamespaceScope
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt WorkstationRole.Arn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: !Sub 'arn:${AWS::Partition}:eks::aws:cluster-access-policy/${EksAccessPolicyName}'
+          AccessScope:
+            Type: namespace
+            Namespaces:
+              - !Ref KubernetesNamespace
+
+  WorkstationInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref WorkstationInstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeviceIndex: '0'
+          SubnetId: !Ref SubnetId
+          GroupSet:
+            - !GetAtt WorkstationSecurityGroup.GroupId
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref RootVolumeSize
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-audited-workstation'
+        - Key: corenova:access-mode
+          Value: audited-workstation
+        - Key: corenova:cluster
+          Value: !Ref ClusterName
+
+Outputs:
+  InstanceId:
+    Value: !Ref WorkstationInstance
+  SessionDocumentName:
+    Description: Always use this document to receive Run As and CloudWatch streaming.
+    Value: !Ref AuditedSessionDocument
+  StartSessionCommand:
+    Value: !Sub 'aws ssm start-session --target ${WorkstationInstance} --document-name ${AuditedSessionDocument} --region ${AWS::Region}'
+  AuditLogGroupName:
+    Value: !Ref AuditLogGroup
+  WorkstationRoleArn:
+    Description: Shared EC2 identity authorized by the selected EKS access entry.
+    Value: !GetAtt WorkstationRole.Arn
+  WorkstationSecurityGroupId:
+    Value: !GetAtt WorkstationSecurityGroup.GroupId
+  AccessMode:
+    Value: audited-workstation

@@ -1,0 +1,140 @@
+name: EKS delivery integration test
+run-name: E2E candidate run ${{ inputs.candidate_run_id }} at ${{ inputs.expected_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Guarded EKS AMI candidate run ID
+        required: true
+        type: string
+      candidate_run_attempt:
+        description: Candidate workflow run attempt
+        required: true
+        default: "1"
+        type: string
+      expected_sha:
+        description: Exact 40-character main commit SHA
+        required: true
+        type: string
+      confirmation:
+        description: Type RUN_DISPOSABLE_EKS_E2E
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: corenova-eks-delivery-e2e
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out approved source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify candidate workflow evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_ATTEMPT: ${{ inputs.candidate_run_attempt }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$CANDIDATE_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$CONFIRMATION" == RUN_DISPOSABLE_EKS_E2E ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+            > /tmp/candidate-run.json
+          jq -e \
+            --arg sha "$EXPECTED_SHA" \
+            '.name == "Guarded EKS AMI candidate" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            /tmp/candidate-run.json
+          mkdir -p operations/reports/candidate
+          gh run download "$CANDIDATE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "candidate-build-${CANDIDATE_RUN_ID}-${CANDIDATE_ATTEMPT}" \
+            --dir operations/reports/candidate
+          jq -e --arg sha "$EXPECTED_SHA" '.commit == $sha' \
+            operations/reports/candidate/build-manifest.json
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: Install runtime and Session Manager client
+        run: |
+          python -m pip install --require-hashes --requirement requirements.lock
+          sudo apt-get update
+          sudo apt-get install --yes expect
+          curl --fail --silent --show-error \
+            https://s3.amazonaws.com/session-manager-downloads/plugin/1.2.835.0/ubuntu_64bit/session-manager-plugin.deb \
+            --output /tmp/session-manager-plugin.deb
+          echo '1c76b9aaa6158613917f0c77b432a989efe9f27a17dbb449afae8a066d7ede1b  /tmp/session-manager-plugin.deb' \
+            | sha256sum --check
+          sudo dpkg -i /tmp/session-manager-plugin.deb
+          [[ "$(session-manager-plugin --version)" == 1.2.835.0 ]]
+          kubectl version --client
+
+      - name: Assume read-only observer role and enforce cost ceiling
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: arn:aws:iam::582920575154:role/CoreNovaMarketplaceObserverRole
+          aws-region: us-east-1
+          audience: sts.amazonaws.com
+          allowed-account-ids: "582920575154"
+          mask-aws-account-id: true
+          unset-current-credentials: true
+          role-duration-seconds: 900
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Check E2E cost ceiling
+        run: |
+          python scripts/aws_readonly_ops.py \
+            --mode cost --max-projected 12 \
+            --output operations/reports/e2e-cost.json
+
+      - name: Assume disposable E2E runner role
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: arn:aws:iam::582920575154:role/CoreNovaEksDeliveryE2ERole
+          aws-region: us-east-1
+          audience: sts.amazonaws.com
+          allowed-account-ids: "582920575154"
+          mask-aws-account-id: true
+          unset-current-credentials: true
+          role-duration-seconds: 5400
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Run create-update-delete and security E2E
+        timeout-minutes: 85
+        run: |
+          product="$(jq -r .product operations/reports/candidate/build-manifest.json)"
+          ami_id="$(jq -r .ami_id operations/reports/candidate/build-manifest.json)"
+          scripts/run_eks_delivery_e2e.sh "$product" "$ami_id" \
+            | tee operations/reports/e2e-run.txt
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: delivery-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: operations/reports
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 90

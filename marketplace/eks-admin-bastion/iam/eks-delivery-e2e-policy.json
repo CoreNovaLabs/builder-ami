@@ -1,0 +1,78 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageOnlyNamedE2EStacks",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack", "cloudformation:UpdateStack", "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources", "cloudformation:GetTemplateSummary",
+        "cloudformation:ValidateTemplate"
+      ],
+      "Resource": [
+        "arn:aws:cloudformation:us-east-1:582920575154:stack/corenova-*-e2e-*/*",
+        "arn:aws:cloudformation:us-east-1:582920575154:stack/corenova-privileged-negative-*/*"
+      ]
+    },
+    {
+      "Sid": "PassOnlyE2ECloudFormationServiceRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::582920575154:role/CoreNovaEksDeliveryE2ECloudFormationRole",
+      "Condition": {"StringEquals": {"iam:PassedToService": "cloudformation.amazonaws.com"}}
+    },
+    {
+      "Sid": "DescribeTestResources",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances", "ec2:DescribeSecurityGroups", "ec2:DescribeVolumes",
+        "eks:DescribeCluster", "ssm:DescribeInstanceInformation", "ssm:GetCommandInvocation",
+        "ssm:DescribeDocument", "ssm:DescribeSessions", "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams", "logs:FilterLogEvents"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RunCommandsOnTaggedE2EInstances",
+      "Effect": "Allow",
+      "Action": ["ssm:SendCommand", "ssm:StartSession"],
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:instance/*",
+      "Condition": {"StringEquals": {"ssm:resourceTag/Purpose": "eks-delivery-e2e"}}
+    },
+    {
+      "Sid": "UseOnlyRequiredSessionDocuments",
+      "Effect": "Allow",
+      "Action": ["ssm:SendCommand", "ssm:StartSession"],
+      "Resource": [
+        "arn:aws:ssm:us-east-1::document/AWS-RunShellScript",
+        "arn:aws:ssm:us-east-1::document/AWS-StartPortForwardingSessionToRemoteHost",
+        "arn:aws:ssm:us-east-1:582920575154:document/corenova-audited-e2e-*"
+      ]
+    },
+    {
+      "Sid": "ManageOwnE2ESessions",
+      "Effect": "Allow",
+      "Action": ["ssm:ResumeSession", "ssm:TerminateSession", "ssmmessages:OpenDataChannel"],
+      "Resource": "arn:aws:ssm:us-east-1:582920575154:session/gha-*"
+    },
+    {
+      "Sid": "ReadAndDeleteRetainedE2EAuditLogs",
+      "Effect": "Allow",
+      "Action": ["logs:DescribeLogGroups", "logs:DescribeLogStreams", "logs:FilterLogEvents", "logs:DeleteLogGroup"],
+      "Resource": "arn:aws:logs:us-east-1:582920575154:log-group:/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
+    },
+    {
+      "Sid": "DeleteRetainedE2EControlPlaneLogs",
+      "Effect": "Allow",
+      "Action": "logs:DeleteLogGroup",
+      "Resource": "arn:aws:logs:us-east-1:582920575154:log-group:/aws/eks/corenova-eks-e2e-*/cluster:*"
+    },
+    {
+      "Sid": "AssumeOnlyE2EOperatorRoles",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::582920575154:role/corenova-eks-e2e/*"
+    }
+  ]
+}

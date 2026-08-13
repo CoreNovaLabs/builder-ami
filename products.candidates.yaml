@@ -52,14 +52,24 @@ products:
       - t3.small
       - t3.medium
       - t3.large
+      - t3.xlarge
       - t3a.micro
       - t3a.small
       - t3a.medium
       - t3a.large
+      - t3a.xlarge
       - m6i.large
+      - m6i.xlarge
       - m7i.large
+      - m7i.xlarge
+      - m7i-flex.large
+      - m7i-flex.xlarge
       - c6i.large
+      - c6i.xlarge
       - c7i.large
+      - c7i.xlarge
+      - c7i-flex.large
+      - c7i-flex.xlarge
     source_ami:
       ssm_parameter: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
 
@@ -99,11 +109,18 @@ products:
       - t4g.small
       - t4g.medium
       - t4g.large
+      - t4g.xlarge
       - m6g.medium
       - m6g.large
+      - m6g.xlarge
       - m7g.medium
       - m7g.large
+      - m7g.xlarge
+      - c6g.medium
       - c6g.large
+      - c6g.xlarge
+      - c7g.medium
       - c7g.large
+      - c7g.xlarge
     source_ami:
       ssm_parameter: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64

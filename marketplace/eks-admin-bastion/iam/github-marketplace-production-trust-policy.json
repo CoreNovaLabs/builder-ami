@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ExactImmutableRepositoryProductionEnvironmentOnly",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::582920575154:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:CoreNovaLabs@283825262/builder-ami@1301293394:environment:marketplace-production"
+        }
+      }
+    }
+  ]
+}
