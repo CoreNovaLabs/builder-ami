@@ -124,10 +124,15 @@ jobs:
       - name: Run create-update-delete and security E2E
         timeout-minutes: 85
         run: |
+          set -o pipefail
           product="$(jq -r .product operations/reports/candidate/build-manifest.json)"
           ami_id="$(jq -r .ami_id operations/reports/candidate/build-manifest.json)"
           scripts/run_eks_delivery_e2e.sh "$product" "$ami_id" \
             | tee operations/reports/e2e-run.txt
+          jq -e \
+            --arg product "$product" --arg ami_id "$ami_id" \
+            '.status == "SUCCEEDED" and .product == $product and .ami_id == $ami_id' \
+            operations/reports/e2e/result.json
 
       - name: Upload E2E evidence
         if: always()
