@@ -103,18 +103,18 @@ jobs:
           [[ "$VERSION_TITLE" =~ ^v[0-9]{8}$ ]]
           [[ "$CONFIRMATION" == VALIDATE_DUAL_ARCHITECTURE_RELEASE ]]
           verify_run() {
-            local run_id="$1" expected_name="$2"
+            local run_id="$1" expected_path="$2"
             [[ "$run_id" =~ ^[0-9]+$ ]]
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "/tmp/run-$run_id.json"
-            jq -e --arg sha "$EXPECTED_SHA" --arg name "$expected_name" \
-              '.name == $name and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            jq -e --arg sha "$EXPECTED_SHA" --arg path "$expected_path" \
+              '.path == $path and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
               "/tmp/run-$run_id.json"
           }
-          verify_run "$X86_CANDIDATE_RUN_ID" "Guarded EKS AMI candidate"
-          verify_run "$ARM_CANDIDATE_RUN_ID" "Guarded EKS AMI candidate"
-          verify_run "$X86_E2E_RUN_ID" "EKS delivery integration test"
-          verify_run "$ARM_E2E_RUN_ID" "EKS delivery integration test"
-          verify_run "$ASSET_RUN_ID" "Publish immutable EKS delivery assets"
+          verify_run "$X86_CANDIDATE_RUN_ID" ".github/workflows/ami-candidate.yml"
+          verify_run "$ARM_CANDIDATE_RUN_ID" ".github/workflows/ami-candidate.yml"
+          verify_run "$X86_E2E_RUN_ID" ".github/workflows/eks-delivery-e2e.yml"
+          verify_run "$ARM_E2E_RUN_ID" ".github/workflows/eks-delivery-e2e.yml"
+          verify_run "$ASSET_RUN_ID" ".github/workflows/eks-delivery-assets.yml"
 
       - name: Download immutable upstream evidence
         env:

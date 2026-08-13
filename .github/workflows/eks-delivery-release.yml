@@ -57,7 +57,7 @@ jobs:
           [[ "$CONFIRMATION" == APPLY_VALIDATED_DUAL_ARCHITECTURE_RELEASE ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VALIDATION_RUN_ID" > /tmp/validation-run.json
           jq -e --arg sha "$EXPECTED_SHA" \
-            '.name == "Validate dual-architecture EKS release" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
+            '.path == ".github/workflows/eks-delivery-validate.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success"' \
             /tmp/validation-run.json
 
       - name: Download the exact validated plan and evidence
