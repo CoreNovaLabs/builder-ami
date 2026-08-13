@@ -336,7 +336,7 @@ spawn aws ssm start-session --region $env(REGION) --target $env(AUDITED_INSTANCE
 sleep 8
 send -- "echo '$env(REMOTE_AUDIT_COMMAND_B64)' | base64 -d | bash\r"
 expect {
-  -re "^$env(MARKER)\\r?$" {}
+  -re "$env(MARKER)" {}
   timeout {exit 7}
   eof {exit 8}
 }
