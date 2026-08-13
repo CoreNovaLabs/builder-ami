@@ -6,14 +6,22 @@
       "Effect": "Allow",
       "Action": [
         "cloudformation:CreateStack", "cloudformation:UpdateStack", "cloudformation:DeleteStack",
+        "cloudformation:CreateChangeSet", "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet", "cloudformation:ExecuteChangeSet",
         "cloudformation:DescribeStacks", "cloudformation:DescribeStackEvents",
-        "cloudformation:DescribeStackResources", "cloudformation:GetTemplateSummary",
-        "cloudformation:ValidateTemplate"
+        "cloudformation:DescribeStackResources", "cloudformation:GetTemplate",
+        "cloudformation:ListChangeSets", "cloudformation:ListStackResources"
       ],
       "Resource": [
         "arn:aws:cloudformation:us-east-1:582920575154:stack/corenova-*-e2e-*/*",
         "arn:aws:cloudformation:us-east-1:582920575154:stack/corenova-privileged-negative-*/*"
       ]
+    },
+    {
+      "Sid": "ValidateE2ETemplates",
+      "Effect": "Allow",
+      "Action": ["cloudformation:GetTemplateSummary", "cloudformation:ValidateTemplate"],
+      "Resource": "*"
     },
     {
       "Sid": "PassOnlyE2ECloudFormationServiceRole",

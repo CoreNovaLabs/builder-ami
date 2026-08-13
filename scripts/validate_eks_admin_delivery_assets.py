@@ -222,6 +222,19 @@ def validate_candidate_workflow() -> None:
         assert forbidden not in workflow
 
 
+def validate_e2e_workflow() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "eks-delivery-e2e.yml").read_text(
+        encoding="utf-8"
+    )
+    for required in (
+        "set -o pipefail",
+        "operations/reports/e2e/result.json",
+        '.status == "SUCCEEDED"',
+        "delivery-e2e-${{ github.run_id }}-${{ github.run_attempt }}",
+    ):
+        assert required in workflow
+
+
 def main() -> int:
     checks = (
         ("identity-relay", lambda: validate_identity_relay(load_template(TEMPLATE_DIR / "identity-relay.yaml"))),
@@ -231,6 +244,7 @@ def main() -> int:
         ("operator-iam-policies", validate_operator_policies),
         ("ami-profile", validate_ansible_profile),
         ("candidate-workflow", validate_candidate_workflow),
+        ("e2e-workflow", validate_e2e_workflow),
     )
     failed = False
     for name, check in checks:
