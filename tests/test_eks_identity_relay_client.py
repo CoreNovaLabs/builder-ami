@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import io
 from pathlib import Path
 import socket
 import stat
@@ -107,6 +108,16 @@ class ResolutionTests(unittest.TestCase):
             client.stop_tunnel(process)
         killpg.assert_called_once_with(123, client.signal.SIGTERM)
 
+    def test_forwards_diagnostics_and_extracts_only_created_session_id(self) -> None:
+        process = mock.Mock()
+        process.stdout = io.StringIO(
+            "Starting session with SessionId: operator-session-123\nPort 18443 opened.\n"
+        )
+        process.stderr = io.StringIO("Waiting for connections...\n")
+        diagnostics = client.start_diagnostic_forwarders(process)
+        diagnostics.join()
+        self.assertEqual(diagnostics.session_id, "operator-session-123")
+
     @mock.patch.object(client, "resolve_connection")
     @mock.patch.object(client, "write_private_json")
     @mock.patch.object(client, "wait_for_port")
@@ -136,8 +147,70 @@ class ResolutionTests(unittest.TestCase):
         write_private_json.return_value.unlink.return_value = None
         run.return_value.returncode = 0
         self.assertEqual(client.main(["--instance-id", "i-123", "--cluster", "cluster"]), 0)
-        self.assertIs(popen.call_args.kwargs["stdout"], client.sys.stderr)
-        self.assertIs(popen.call_args.kwargs["stderr"], client.sys.stderr)
+        self.assertIs(popen.call_args.kwargs["stdout"], client.subprocess.PIPE)
+        self.assertIs(popen.call_args.kwargs["stderr"], client.subprocess.PIPE)
+
+    @mock.patch.object(client, "resolve_connection")
+    @mock.patch.object(client, "write_private_json")
+    @mock.patch.object(client, "wait_for_port")
+    @mock.patch.object(client, "stop_tunnel")
+    @mock.patch.object(client, "start_diagnostic_forwarders")
+    @mock.patch.object(client.subprocess, "run")
+    @mock.patch.object(client.subprocess, "Popen")
+    @mock.patch.object(client, "require_executables")
+    @mock.patch.object(client, "ensure_port_available")
+    def test_explicitly_terminates_the_session_created_by_this_client(
+        self,
+        _ensure_port: mock.Mock,
+        _require_executables: mock.Mock,
+        _popen: mock.Mock,
+        run: mock.Mock,
+        start_diagnostics: mock.Mock,
+        _stop_tunnel: mock.Mock,
+        _wait_for_port: mock.Mock,
+        write_private_json: mock.Mock,
+        resolve_connection: mock.Mock,
+    ) -> None:
+        resolve_connection.return_value = (
+            "i-123",
+            "cluster",
+            "https://cluster.example.eks.amazonaws.com",
+            "Y2VydA==",
+        )
+        write_private_json.return_value = mock.Mock()
+        diagnostics = mock.Mock()
+        diagnostics.session_id = "operator-session-123"
+        start_diagnostics.return_value = diagnostics
+        run.side_effect = [
+            mock.Mock(returncode=0),
+            mock.Mock(returncode=0, stderr="", stdout=""),
+        ]
+
+        self.assertEqual(
+            client.main(
+                [
+                    "--instance-id",
+                    "i-123",
+                    "--cluster",
+                    "cluster",
+                    "--region",
+                    "us-east-1",
+                ]
+            ),
+            0,
+        )
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            [
+                "aws",
+                "--region",
+                "us-east-1",
+                "ssm",
+                "terminate-session",
+                "--session-id",
+                "operator-session-123",
+            ],
+        )
 
 
 if __name__ == "__main__":
