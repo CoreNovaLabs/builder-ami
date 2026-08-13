@@ -77,7 +77,7 @@
     {
       "Sid": "ManageE2EAuditLogs",
       "Effect": "Allow",
-      "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource"],
+      "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource", "logs:ListTagsForResource", "logs:DescribeIndexPolicies"],
       "Resource": "arn:aws:logs:us-east-1:582920575154:log-group:/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
     }
   ]
