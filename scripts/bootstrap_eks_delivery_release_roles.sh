@@ -112,8 +112,8 @@ trap 'rm -f "$BUCKET_POLICY"' EXIT
 jq -n --arg bucket "$BUCKET" '{
   Version:"2012-10-17",
   Statement:[
-    {Sid:"DenyInsecureTransport",Effect:"Deny",Principal:"*",Action:"s3:*",Resource:["arn:aws:s3:::"+$bucket,"arn:aws:s3:::"+$bucket+"/*"],Condition:{Bool:{"aws:SecureTransport":"false"}}},
-    {Sid:"PublicReadImmutableEksAssets",Effect:"Allow",Principal:"*",Action:"s3:GetObject",Resource:"arn:aws:s3:::"+$bucket+"/eks-admin-bastion/*"}
+    {Sid:"DenyInsecureTransport",Effect:"Deny",Principal:"*",Action:"s3:*",Resource:[("arn:aws:s3:::"+$bucket),("arn:aws:s3:::"+$bucket+"/*")],Condition:{Bool:{"aws:SecureTransport":"false"}}},
+    {Sid:"PublicReadImmutableEksAssets",Effect:"Allow",Principal:"*",Action:"s3:GetObject",Resource:("arn:aws:s3:::"+$bucket+"/eks-admin-bastion/*")}
   ]
 }' > "$BUCKET_POLICY"
 aws s3api put-bucket-policy --bucket "$BUCKET" --policy "file://$BUCKET_POLICY"
