@@ -300,6 +300,22 @@ def validate_eks_delivery_release_roles() -> None:
     ):
         if required not in service_rendered:
             fail(f"E2E CloudFormation policy is missing {required}")
+    log_metadata = [
+        statement
+        for statement in service.get("Statement") or []
+        if statement.get("Sid") == "ReadE2ELogGroupMetadata"
+    ]
+    if len(log_metadata) != 1:
+        fail("E2E CloudFormation policy must have one log metadata statement")
+    metadata_statement = log_metadata[0]
+    if metadata_statement.get("Resource") != "*":
+        fail("logs:DescribeLogGroups requires Resource *")
+    if set(actions(metadata_statement)) != {"logs:DescribeLogGroups"}:
+        fail("the wildcard log metadata statement must remain read-only")
+    if metadata_statement.get("Condition") != {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"}
+    }:
+        fail("the wildcard log metadata statement must remain region scoped")
 
     main_trust = json.dumps(load("github-main-trust-policy.json"))
     production_trust = json.dumps(load("github-marketplace-production-trust-policy.json"))
