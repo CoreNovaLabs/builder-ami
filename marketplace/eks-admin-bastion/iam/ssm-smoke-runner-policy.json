@@ -51,7 +51,7 @@
       "Condition": {
         "StringEquals": {
           "aws:RequestedRegion": "us-east-1",
-          "ec2:Owner": "582920575154",
+          "aws:ResourceAccount": "582920575154",
           "ec2:ResourceTag/Project": "builder-ami",
           "ec2:ResourceTag/Marketplace": "candidate"
         }
