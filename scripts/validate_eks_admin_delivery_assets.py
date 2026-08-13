@@ -58,6 +58,8 @@ def validate_common(template: dict[str, Any], instance_name: str, sg_name: str) 
     parameters = template["Parameters"]
     assert parameters["AmiId"]["Type"] == "AWS::EC2::Image::Id"
     assert parameters["InstanceArchitecture"]["Default"] == "x86_64"
+    assert parameters["RootVolumeSize"]["Default"] >= 20
+    assert parameters["RootVolumeSize"]["MinValue"] >= 20
     assert "RequireArchitectureCompatibleInstanceType" in template["Rules"]
 
     sg = resource(template, sg_name, "AWS::EC2::SecurityGroup")

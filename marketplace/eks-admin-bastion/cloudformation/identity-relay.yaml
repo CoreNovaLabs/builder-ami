@@ -121,8 +121,8 @@ Parameters:
       value to the architecture of the product listing.
   RootVolumeSize:
     Type: Number
-    Default: 12
-    MinValue: 8
+    Default: 20
+    MinValue: 20
     MaxValue: 100
     Description: Encrypted gp3 root volume size in GiB.
 
