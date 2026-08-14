@@ -324,11 +324,36 @@ def validate_eks_delivery_release_roles() -> None:
     if len(audit_logs) != 1:
         fail("E2E CloudFormation policy must have one audit-log statement")
     audit_statement = audit_logs[0]
+    if set(actions(audit_statement)) != {
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:DeleteRetentionPolicy",
+    }:
+        fail("the audit-log management statement has an unexpected action set")
     if audit_statement.get("Resource") != (
         "arn:aws:logs:us-east-1:582920575154:log-group:"
         "/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
     ):
         fail("E2E audit-log actions must remain prefix scoped")
+    audit_tags = [
+        statement
+        for statement in service.get("Statement") or []
+        if statement.get("Sid") == "ManageE2EAuditLogTags"
+    ]
+    if len(audit_tags) != 1:
+        fail("E2E CloudFormation policy must have one audit-log tag statement")
+    audit_tag_statement = audit_tags[0]
+    if set(actions(audit_tag_statement)) != {
+        "logs:TagResource",
+        "logs:UntagResource",
+    }:
+        fail("the audit-log tag statement must contain only tag actions")
+    if audit_tag_statement.get("Resource") != (
+        "arn:aws:logs:us-east-1:582920575154:log-group:"
+        "/corenova/eks-ssm-bastion/corenova-audited-e2e-*"
+    ):
+        fail("E2E audit-log tag actions must use the prefix-scoped log-group ARN")
     audit_metadata = [
         statement
         for statement in service.get("Statement") or []

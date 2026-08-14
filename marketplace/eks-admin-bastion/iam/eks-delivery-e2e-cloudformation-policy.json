@@ -77,8 +77,14 @@
     {
       "Sid": "ManageE2EAuditLogs",
       "Effect": "Allow",
-      "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource"],
+      "Action": ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy"],
       "Resource": "arn:aws:logs:us-east-1:582920575154:log-group:/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
+    },
+    {
+      "Sid": "ManageE2EAuditLogTags",
+      "Effect": "Allow",
+      "Action": ["logs:TagResource", "logs:UntagResource"],
+      "Resource": "arn:aws:logs:us-east-1:582920575154:log-group:/corenova/eks-ssm-bastion/corenova-audited-e2e-*"
     },
     {
       "Sid": "ReadE2EAuditLogResourceMetadata",
