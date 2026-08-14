@@ -324,15 +324,29 @@ def validate_eks_delivery_release_roles() -> None:
     if len(audit_logs) != 1:
         fail("E2E CloudFormation policy must have one audit-log statement")
     audit_statement = audit_logs[0]
-    audit_actions = set(actions(audit_statement))
-    for required in ("logs:ListTagsForResource", "logs:DescribeIndexPolicies"):
-        if required not in audit_actions:
-            fail(f"E2E CloudFormation policy is missing update read action {required}")
     if audit_statement.get("Resource") != (
         "arn:aws:logs:us-east-1:582920575154:log-group:"
         "/corenova/eks-ssm-bastion/corenova-audited-e2e-*:*"
     ):
         fail("E2E audit-log actions must remain prefix scoped")
+    audit_metadata = [
+        statement
+        for statement in service.get("Statement") or []
+        if statement.get("Sid") == "ReadE2EAuditLogResourceMetadata"
+    ]
+    if len(audit_metadata) != 1:
+        fail("E2E CloudFormation policy must have one audit-log resource metadata statement")
+    audit_metadata_statement = audit_metadata[0]
+    if set(actions(audit_metadata_statement)) != {
+        "logs:ListTagsForResource",
+        "logs:DescribeIndexPolicies",
+    }:
+        fail("the audit-log resource metadata statement must remain read-only")
+    if audit_metadata_statement.get("Resource") != (
+        "arn:aws:logs:us-east-1:582920575154:log-group:"
+        "/corenova/eks-ssm-bastion/corenova-audited-e2e-*"
+    ):
+        fail("E2E audit-log resource metadata reads must use the prefix-scoped log-group ARN")
 
     main_trust = json.dumps(load("github-main-trust-policy.json"))
     production_trust = json.dumps(load("github-marketplace-production-trust-policy.json"))
