@@ -241,6 +241,16 @@ def validate_e2e_workflow() -> None:
     assert '-re "^$env(MARKER)' not in runner
 
 
+def validate_release_validation_workflow() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "eks-delivery-validate.yml").read_text(
+        encoding="utf-8"
+    )
+    assume = workflow.index("- name: Assume Marketplace VALIDATE-only role")
+    render = workflow.index("- name: Verify evidence graph and render one atomic plan")
+    submit = workflow.index("- name: Submit VALIDATE and wait for terminal success")
+    assert assume < render < submit
+
+
 def main() -> int:
     checks = (
         ("identity-relay", lambda: validate_identity_relay(load_template(TEMPLATE_DIR / "identity-relay.yaml"))),
@@ -251,6 +261,7 @@ def main() -> int:
         ("ami-profile", validate_ansible_profile),
         ("candidate-workflow", validate_candidate_workflow),
         ("e2e-workflow", validate_e2e_workflow),
+        ("release-validation-workflow", validate_release_validation_workflow),
     )
     failed = False
     for name, check in checks:
