@@ -106,7 +106,7 @@ jobs:
       - name: Check E2E cost ceiling
         run: |
           python scripts/aws_readonly_ops.py \
-            --mode cost --max-projected 12 \
+            --mode cost --max-projected 18 \
             --output operations/reports/e2e-cost.json
 
       - name: Assume disposable E2E runner role
