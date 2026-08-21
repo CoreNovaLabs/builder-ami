@@ -156,6 +156,12 @@ def build_change_set(
         raise ValueError("version title must use vYYYYMMDD")
 
     source = ami_source(product, ami_id, access_role_arn)
+    if include_eks_cloudformation:
+        # AWS Marketplace requires every delivery option in one AMI version to
+        # use the exact same AmiSource object. ScanningPort is accepted only by
+        # standalone AMI delivery and defaults to 22, so omit it from all three
+        # options when CloudFormation delivery is included.
+        source = deployment_template_ami_source(source)
     delivery_options = [
         {
             "Details": {

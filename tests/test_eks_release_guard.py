@@ -44,7 +44,7 @@ class ReleaseGuardTests(unittest.TestCase):
                 "status": "SUCCEEDED",
                 "commit": "a" * 40,
                 "plan_sha256": digest,
-                "change_set_id": "change-set/example/123",
+                "change_set_id": "example123-validated",
             }))
             with mock.patch.dict("os.environ", {"CORENOVA_PRODUCTS_FILE": "products.candidates.yaml"}):
                 result = assert_release(release, evidence, "a" * 40)
@@ -62,7 +62,25 @@ class ReleaseGuardTests(unittest.TestCase):
                 "status": "SUCCEEDED",
                 "commit": "a" * 40,
                 "plan_sha256": "0" * 64,
-                "change_set_id": "change-set/example/123",
+                "change_set_id": "example123-validated",
+            }))
+            with mock.patch.dict("os.environ", {"CORENOVA_PRODUCTS_FILE": "products.candidates.yaml"}):
+                with self.assertRaises(RuntimeError):
+                    assert_release(release, evidence, "a" * 40)
+
+    @mock.patch("submit_eks_delivery_release.fail", side_effect=RuntimeError)
+    def test_rejects_invalid_catalog_change_set_id(self, _fail: mock.Mock) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            paths = self.plans(directory)
+            release = directory / "release.json"
+            release.write_text(json.dumps(compose(list(paths))))
+            evidence = directory / "evidence.json"
+            evidence.write_text(json.dumps({
+                "status": "SUCCEEDED",
+                "commit": "a" * 40,
+                "plan_sha256": hashlib.sha256(release.read_bytes()).hexdigest(),
+                "change_set_id": "change-set/contains/slashes",
             }))
             with mock.patch.dict("os.environ", {"CORENOVA_PRODUCTS_FILE": "products.candidates.yaml"}):
                 with self.assertRaises(RuntimeError):

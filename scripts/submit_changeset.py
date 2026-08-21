@@ -126,13 +126,6 @@ def assert_eks_delivery_plan(data: dict) -> None:
             fail("EKS delivery option 1 must be the standalone AMI")
         expected_titles = ("Identity Relay", "Audited Workstation")
         expected_fragments = ("/identity-relay", "/audited-workstation")
-        shared_keys = (
-            "AmiId",
-            "AccessRoleArn",
-            "UserName",
-            "OperatingSystemName",
-            "OperatingSystemVersion",
-        )
         for option, title, expected_fragment in zip(
             options[1:], expected_titles, expected_fragments
         ):
@@ -148,8 +141,11 @@ def assert_eks_delivery_plan(data: dict) -> None:
             if len(sources) != 1 or sources[0].get("ParameterName") != "AmiId":
                 fail(f"{title} must map the Marketplace AMI to parameter AmiId")
             source = sources[0].get("AmiSource") or {}
-            if any(source.get(key) != standalone.get(key) for key in shared_keys):
-                fail(f"{title} does not use the same AMI source as standalone delivery")
+            if source != standalone:
+                fail(
+                    f"{title} does not use the exact same AMI source as "
+                    "standalone delivery"
+                )
             for url_field in ("Template", "ArchitectureDiagram"):
                 value = str(details.get(url_field, ""))
                 if not value.startswith("https://") or "?" in value or "#" in value:
