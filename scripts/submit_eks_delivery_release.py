@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 from productlib import PRODUCTS_FILE_ENV, fail, load_config
@@ -14,6 +15,7 @@ from submit_changeset import assert_allowed_change_set, assert_eks_delivery_plan
 
 PUBLISHER_ROLE_NAME = "CoreNovaMarketplaceDeliveryPublisherRole"
 PRODUCT_IDS = {"prod-hapxotc2y7jmi", "prod-nspz2g6ki6qvo"}
+CHANGE_SET_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,255}$")
 
 
 def sha256(path: Path) -> str:
@@ -64,7 +66,7 @@ def assert_release(plan_path: Path, evidence_path: Path, expected_sha: str) -> d
         if evidence.get(key) != value:
             fail(f"validation evidence {key} does not match the release plan")
     change_set_id = str(evidence.get("change_set_id") or "")
-    if not change_set_id.startswith("change-set/"):
+    if not CHANGE_SET_ID_PATTERN.fullmatch(change_set_id):
         fail("validation evidence is missing the Catalog change-set ID")
     return data
 

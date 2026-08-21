@@ -62,6 +62,16 @@ class SubmitGuardTests(unittest.TestCase):
         assert_eks_delivery_plan(plan())
 
     @mock.patch("submit_changeset.fail", side_effect=RuntimeError)
+    def test_rejects_ami_source_field_drift(self, _fail: mock.Mock) -> None:
+        value = plan()
+        details = value["ChangeSet"][0]["DetailsDocument"]["DeliveryOptions"][0][
+            "Details"
+        ]["AmiDeliveryOptionDetails"]
+        details["AmiSource"] = {**details["AmiSource"], "ScanningPort": 22}
+        with self.assertRaises(RuntimeError):
+            assert_eks_delivery_plan(value)
+
+    @mock.patch("submit_changeset.fail", side_effect=RuntimeError)
     def test_rejects_incomplete_eks_plan(self, _fail: mock.Mock) -> None:
         with self.assertRaises(RuntimeError):
             assert_eks_delivery_plan(plan(option_count=1))

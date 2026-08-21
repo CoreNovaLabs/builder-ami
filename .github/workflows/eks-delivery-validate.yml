@@ -220,7 +220,7 @@ jobs:
             "$plan" --products-file products.candidates.yaml --intent VALIDATE \
             > operations/reports/validate/start.json
           change_set_id="$(jq -r .ChangeSetId operations/reports/validate/start.json)"
-          [[ "$change_set_id" == change-set/* ]]
+          [[ "$change_set_id" =~ ^[A-Za-z0-9_-]{1,255}$ ]]
           status=""
           for _ in $(seq 1 240); do
             aws marketplace-catalog describe-change-set \

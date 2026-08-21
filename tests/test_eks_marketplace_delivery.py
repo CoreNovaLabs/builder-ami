@@ -91,10 +91,22 @@ class MarketplaceDeliveryTests(unittest.TestCase):
             plan["ChangeSet"][0]["DetailsDocument"]["Version"]["ReleaseNotes"],
         )
         standalone = options[0]["Details"]["AmiDeliveryOptionDetails"]["AmiSource"]
+        self.assertNotIn("ScanningPort", standalone)
         for option in options[1:]:
             source = option["Details"]["DeploymentTemplateDeliveryOptionDetails"]["TemplateSources"][0]["AmiSource"]
-            for key in ("AmiId", "AccessRoleArn", "UserName", "OperatingSystemName", "OperatingSystemVersion"):
-                self.assertEqual(source[key], standalone[key])
+            self.assertEqual(source, standalone)
+
+    def test_standalone_plan_keeps_scanning_port(self) -> None:
+        plan = build_change_set(
+            product=self.product,
+            ami_id=self.source["AmiId"],
+            access_role_arn=self.source["AccessRoleArn"],
+            version_title_override="v20260814",
+        )
+        source = plan["ChangeSet"][0]["DetailsDocument"]["DeliveryOptions"][0][
+            "Details"
+        ]["AmiDeliveryOptionDetails"]["AmiSource"]
+        self.assertEqual(source["ScanningPort"], 22)
 
     def test_rejects_non_https_and_query_strings(self) -> None:
         for value in ("http://assets.example.com", "https://assets.example.com?v=1"):
