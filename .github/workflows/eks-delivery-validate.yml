@@ -210,6 +210,8 @@ jobs:
             plans/eks-admin-bastion-al2023-x86_64-add-version.json \
             plans/eks-admin-bastion-al2023-arm64-add-version.json \
             --output operations/reports/validate/release-plan.json
+          python scripts/validate_marketplace_template_instance_types.py \
+            operations/reports/validate/release-plan.json
 
       - name: Submit VALIDATE and wait for terminal success
         env:

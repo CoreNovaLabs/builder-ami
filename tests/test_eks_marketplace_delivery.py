@@ -15,6 +15,9 @@ from render_marketplace_changeset import (  # noqa: E402
     eks_cloudformation_delivery_options,
     validate_asset_base_url,
 )
+from validate_marketplace_template_instance_types import (  # noqa: E402
+    validate_template_instance_types,
+)
 
 
 class MarketplaceDeliveryTests(unittest.TestCase):
@@ -140,6 +143,78 @@ class MarketplaceDeliveryTests(unittest.TestCase):
             self.assertIn("Default: t4g.micro", arm)
             self.assertIn("AllowedValues: [x86_64]", x86)
             self.assertIn("Default: t3.micro", x86)
+
+    def test_packaged_templates_only_reference_product_instance_family(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package(Path(directory))
+            expectations = {
+                "x86_64": {
+                    "required": ("t3.micro", "t3.small", "t3.medium", "t3.large"),
+                    "forbidden": "t4g.",
+                    "defaults": {
+                        "identity-relay.yaml": "Default: t3.micro",
+                        "audited-workstation.yaml": "Default: t3.small",
+                    },
+                },
+                "arm64": {
+                    "required": ("t4g.micro", "t4g.small", "t4g.medium", "t4g.large"),
+                    "forbidden": "t3.",
+                    "defaults": {
+                        "identity-relay.yaml": "Default: t4g.micro",
+                        "audited-workstation.yaml": "Default: t4g.small",
+                    },
+                },
+            }
+            for architecture, expected in expectations.items():
+                for template_name, default_marker in expected["defaults"].items():
+                    with self.subTest(
+                        architecture=architecture, template=template_name
+                    ):
+                        rendered = (
+                            Path(directory) / architecture / template_name
+                        ).read_text()
+                        self.assertIn(default_marker, rendered)
+                        for instance_type in expected["required"]:
+                            self.assertIn(instance_type, rendered)
+                        self.assertNotIn(expected["forbidden"], rendered)
+
+    def test_rejects_template_instance_types_outside_live_product(self) -> None:
+        template = {
+            "Parameters": {
+                "InstanceType": {
+                    "Default": "t3.small",
+                    "AllowedValues": ["t3.small", "t4g.small"],
+                }
+            },
+            "Resources": {
+                "RelayInstance": {
+                    "Type": "AWS::EC2::Instance",
+                    "Properties": {"InstanceType": {"Ref": "InstanceType"}},
+                }
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "t4g.small"):
+            validate_template_instance_types(template, {"t3.small"}, "test-template")
+
+    def test_accepts_template_instance_types_supported_by_live_product(self) -> None:
+        template = {
+            "Parameters": {
+                "InstanceType": {
+                    "Default": "t3.small",
+                    "AllowedValues": ["t3.micro", "t3.small"],
+                }
+            },
+            "Resources": {
+                "RelayInstance": {
+                    "Type": "AWS::EC2::Instance",
+                    "Properties": {"InstanceType": {"Ref": "InstanceType"}},
+                }
+            },
+        }
+        candidates = validate_template_instance_types(
+            template, {"t3.micro", "t3.small", "t3.medium"}, "test-template"
+        )
+        self.assertEqual(candidates, {"t3.micro", "t3.small"})
 
 
 if __name__ == "__main__":

@@ -17,6 +17,10 @@ from productlib import ROOT
 SOURCE = ROOT / "marketplace" / "eks-admin-bastion" / "cloudformation"
 PRODUCT_SOURCE = ROOT / "marketplace" / "eks-admin-bastion"
 TEMPLATES = ("identity-relay.yaml", "audited-workstation.yaml")
+INSTANCE_TYPES = {
+    "x86_64": ("t3.micro", "t3.small", "t3.medium", "t3.large"),
+    "arm64": ("t4g.micro", "t4g.small", "t4g.medium", "t4g.large"),
+}
 DIAGRAMS = (
     "identity-relay-architecture.png",
     "audited-workstation-architecture.png",
@@ -43,6 +47,25 @@ def architecture_template(source: str, architecture: str, name: str) -> str:
     if source.count(original_block) != 1:
         raise ValueError(f"{name}: expected one architecture parameter block")
     rendered = source.replace(original_block, replacement_block)
+
+    combined_instance_values = """    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t4g.micro
+      - t4g.small
+      - t4g.medium
+      - t4g.large"""
+    architecture_instance_values = "    AllowedValues:\n" + "\n".join(
+        f"      - {instance_type}" for instance_type in INSTANCE_TYPES[architecture]
+    )
+    if rendered.count(combined_instance_values) != 1:
+        raise ValueError(f"{name}: expected one combined instance type list")
+    rendered = rendered.replace(
+        combined_instance_values, architecture_instance_values
+    )
+
     if architecture == "arm64":
         default_instance = "t3.micro" if name == "identity-relay.yaml" else "t3.small"
         replacement_instance = "t4g.micro" if name == "identity-relay.yaml" else "t4g.small"
@@ -50,6 +73,23 @@ def architecture_template(source: str, architecture: str, name: str) -> str:
         if rendered.count(marker) != 1:
             raise ValueError(f"{name}: expected one default instance marker")
         rendered = rendered.replace(marker, f"    Default: {replacement_instance}\n")
+
+    rule_start_marker = "  RequireArchitectureCompatibleInstanceType:\n"
+    rule_end_marker = "\n\nConditions:"
+    if rendered.count(rule_start_marker) != 1:
+        raise ValueError(f"{name}: expected one instance architecture rule")
+    rule_start = rendered.index(rule_start_marker)
+    rule_end = rendered.index(rule_end_marker, rule_start)
+    instance_list = ", ".join(INSTANCE_TYPES[architecture])
+    locked_rule = f"""  RequireArchitectureCompatibleInstanceType:
+    Assertions:
+      - Assert: !And
+          - !Equals [!Ref InstanceArchitecture, {architecture}]
+          - !Contains
+            - [{instance_list}]
+            - !Ref InstanceType
+        AssertDescription: InstanceType must match the Marketplace AMI architecture."""
+    rendered = rendered[:rule_start] + locked_rule + rendered[rule_end:]
     return rendered
 
 
