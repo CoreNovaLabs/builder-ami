@@ -14,6 +14,7 @@ from productlib import PRODUCTS_FILE_ENV, fail, load_config
 VALIDATOR_ROLE_NAME = "CoreNovaMarketplaceValidatorRole"
 PUBLISHER_ROLE_NAME = "CoreNovaMarketplacePublisherRole"
 EKS_PRODUCT_IDS = {"prod-hapxotc2y7jmi", "prod-nspz2g6ki6qvo"}
+USAGE_INSTRUCTIONS_MAX_LENGTH = 4000
 
 
 def assert_expected_caller(intent: str, expected_account_id: str) -> dict:
@@ -157,6 +158,36 @@ def assert_eks_delivery_plan(data: dict) -> None:
                     fail(f"{title} {url_field} points to the wrong delivery asset")
 
 
+def assert_usage_instructions_size(data: dict) -> None:
+    for change_index, change in enumerate(data.get("ChangeSet", []), start=1):
+        options = (
+            (change.get("DetailsDocument") or {}).get("DeliveryOptions") or []
+        )
+        for option_index, option in enumerate(options, start=1):
+            details = option.get("Details") or {}
+            for detail_type in (
+                "AmiDeliveryOptionDetails",
+                "DeploymentTemplateDeliveryOptionDetails",
+            ):
+                instructions = (details.get(detail_type) or {}).get(
+                    "UsageInstructions"
+                )
+                if instructions is None:
+                    continue
+                if not isinstance(instructions, str):
+                    fail(
+                        "UsageInstructions must be a string for "
+                        f"change {change_index}, delivery option {option_index}"
+                    )
+                if len(instructions) > USAGE_INSTRUCTIONS_MAX_LENGTH:
+                    fail(
+                        "UsageInstructions exceeds the AWS Marketplace Catalog "
+                        f"limit for change {change_index}, delivery option "
+                        f"{option_index}: {len(instructions)} > "
+                        f"{USAGE_INSTRUCTIONS_MAX_LENGTH}"
+                    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("plan")
@@ -172,6 +203,7 @@ def main() -> None:
     path = Path(args.plan)
     data = assert_allowed_change_set(path, allow_new_products=args.allow_new_products)
     assert_eks_delivery_plan(data)
+    assert_usage_instructions_size(data)
     changes = data.get("ChangeSet", [])
     if not changes:
         fail("change set must contain at least one change")
