@@ -78,6 +78,10 @@ class MarketplaceDeliveryTests(unittest.TestCase):
         )
         options = plan["ChangeSet"][0]["DetailsDocument"]["DeliveryOptions"]
         self.assertEqual(len(options), 3)
+        standalone_instructions = options[0]["Details"]["AmiDeliveryOptionDetails"][
+            "UsageInstructions"
+        ]
+        self.assertLessEqual(len(standalone_instructions), 4000)
         self.assertEqual(
             plan["ChangeSet"][0]["DetailsDocument"]["Version"]["VersionTitle"],
             "v20260814",
