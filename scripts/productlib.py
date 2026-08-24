@@ -49,8 +49,8 @@ def load_config() -> dict[str, Any]:
     for label, values in (("key", keys), ("title", titles), ("entity_id", entities)):
         if len(values) != len(set(values)):
             fail(f"duplicate product {label} in {path}")
-    if path.resolve() == PRODUCTS_FILE.resolve() and len(products) != 11:
-        fail(f"expected exactly 11 allowlisted products, found {len(products)}")
+    if path.resolve() == PRODUCTS_FILE.resolve() and len(products) != 15:
+        fail(f"expected exactly 15 allowlisted products, found {len(products)}")
     return config
 
 
@@ -122,6 +122,10 @@ def version_title() -> str:
 def usage_instructions(product: dict[str, Any], ami_id: str) -> str:
     if product.get("profile") == "eks-admin-bastion":
         return eks_admin_bastion_usage(product, ami_id)
+    if product.get("profile") == "gpu-ubuntu":
+        return gpu_ubuntu_usage(product, ami_id)
+    if product.get("profile") == "ai-inference":
+        return ai_inference_usage(product, ami_id)
 
     checks = [
         "systemctl is-active rsyslog",
@@ -218,6 +222,60 @@ Security note: Identity Relay keeps EKS authorization on each operator identity.
 Audited Workstation streams standard shell sessions to CloudWatch Logs but uses
 a shared EC2 role. Session Manager cannot log port-forwarded session contents.
 Keep inbound SSH closed unless your organization explicitly requires fallback."""
+
+    if product.get("profile") == "gpu-ubuntu":
+        source_line = f"\nSource AMI: {source_ami_id} (us-east-1)" if source_ami_id else ""
+        return f"""{product["title"]}
+
+Version: {effective_version}
+
+This release rebuilds the AMI with the standardized CoreNova builder-ami pipeline.
+
+Stack:
+- Ubuntu 22.04 LTS with latest upstream security updates at build time.
+- SSH key-only access, root login disabled, auditd, rsyslog, chrony.
+- UFW firewall baseline with SSH allowed.
+- Automatic security updates via unattended-upgrades.
+- NVIDIA driver (LTS branch, currently 550) and CUDA 12.4 toolkit installed: compiler and compute libraries.
+- Driver kernel modules are built with DKMS at image build time and load on GPU instance launch (nvidia-smi ready).
+- Cloud-init cleaned before image capture.
+- Marketplace checks require unencrypted EBS snapshots and no existing product codes.
+
+Architecture: {product["architecture"]}
+Storage layout: {product["layout"]}
+Filesystem: {product["filesystem"]}{source_line}
+AMI: {ami_id} (us-east-1)
+
+Compliance note: This image provides a hardened baseline. Buyers should run their own compliance validation for their regulatory requirements."""
+
+    if product.get("profile") == "ai-inference":
+        source_line = f"\nSource AMI: {source_ami_id} (us-east-1)" if source_ami_id else ""
+        return f"""{product["title"]}
+
+Version: {effective_version}
+
+This release rebuilds the AMI with the standardized CoreNova builder-ami pipeline.
+
+Stack:
+- Ubuntu 22.04 LTS with latest upstream security updates at build time.
+- SSH key-only access, root login disabled, auditd, rsyslog, chrony.
+- UFW firewall baseline: SSH and HTTPS allowed; AI engine ports bound to localhost only.
+- NVIDIA driver (LTS branch, currently 550) and CUDA 12.4 toolkit; DKMS modules load on GPU instance launch.
+- Docker Engine with the NVIDIA container toolkit and GPU runtime preconfigured.
+- Open WebUI and Ollama start automatically on first boot via Docker Compose; optional vLLM profile included.
+- nginx TLS endpoint (self-signed certificate; buyers can replace /opt/corenova/ai/certs).
+- Amazon CloudWatch Agent installed and enabled (requires an instance profile with CloudWatch Logs permissions).
+- First-boot bootstrap seeds the Open WebUI admin account (admin@local.host, password = EC2 Instance ID).
+- Optional models EBS volume is mounted at /mnt/models on first boot.
+- Cloud-init cleaned before image capture.
+- Marketplace checks require unencrypted EBS snapshots and no existing product codes.
+
+Architecture: {product["architecture"]}
+Storage layout: {product["layout"]}
+Filesystem: {product["filesystem"]}{source_line}
+AMI: {ami_id} (us-east-1)
+
+Security note: The AMI contains no hardcoded passwords, private keys, AWS credentials, or model artifacts. The admin password is derived from the buyer's own EC2 Instance ID at first boot."""
 
     source_line = f"\nSource AMI: {source_ami_id} (us-east-1)" if source_ami_id else ""
     return f"""{product["title"]}
@@ -331,3 +389,97 @@ Web: https://www.corenovacloud.com/en/support/
 
 Include Region, AMI and Instance IDs, instance type, EKS version, command output,
 and reproduction steps."""
+
+
+def gpu_ubuntu_usage(product: dict[str, Any], ami_id: str) -> str:
+    return f"""**Overview**
+
+{product["title"]} - security-hardened GPU compute AMI for Ubuntu 22.04 LTS (x86_64) built by CoreNova Intelligence Limited.
+
+Recommended instance type: {product["recommended_instance_type"]}.
+AMI: {ami_id} (us-east-1).
+
+**Launch checklist**
+
+1. Subscribe in AWS Marketplace, then launch in us-east-1.
+2. Instance type: {product["recommended_instance_type"]}, g5.xlarge, p3.2xlarge, or another NVIDIA GPU instance type.
+3. Key pair: select your EC2 SSH key. Password login is disabled.
+4. Security group: allow inbound TCP 22 from your administrator IP only.
+
+**First connection**
+
+ssh -i your-key.pem {product["ssh_username"]}@YOUR_PUBLIC_IP
+
+**Post-launch verification**
+
+nvidia-smi
+Expected: shows the NVIDIA driver version and GPU(s). Driver modules load on first boot.
+systemctl is-active auditd chrony rsyslog
+sudo systemctl is-active ufw
+
+**Sensitive data and credentials**
+
+The AMI does not include hardcoded passwords, private keys, AWS credentials, or customer data.
+
+**Encryption**
+
+The Marketplace source AMI uses unencrypted EBS snapshots as required for AWS Marketplace AMI ingestion. Buyers can launch or copy the AMI with encrypted EBS volumes according to their own AWS account policy.
+
+**Support**
+
+Email: support@corenovacloud.com
+Web: https://www.corenovacloud.com/
+
+Include AWS Region, AMI ID, EC2 Instance ID, instance type, and steps to reproduce."""
+
+
+def ai_inference_usage(product: dict[str, Any], ami_id: str) -> str:
+    return f"""**Overview**
+
+{product["title"]} - security-hardened AI inference AMI for Ubuntu 22.04 LTS (x86_64) built by CoreNova Intelligence Limited. Open WebUI and Ollama start automatically on first boot via Docker Compose behind an nginx TLS endpoint; an optional vLLM profile is included.
+
+Recommended instance type: {product["recommended_instance_type"]}.
+AMI: {ami_id} (us-east-1).
+
+**Launch checklist**
+
+1. Subscribe in AWS Marketplace, then launch in us-east-1.
+2. Instance type: {product["recommended_instance_type"]}, g5.xlarge, g4dn.xlarge, or another NVIDIA GPU instance type.
+3. Key pair: select your EC2 SSH key. Password login is disabled.
+4. Security group: allow inbound TCP 22 (admin) and TCP 443 (Open WebUI) from trusted ranges only.
+5. Optional: attach an extra EBS volume for model storage; it is mounted at /mnt/models on first boot.
+6. Optional: attach an IAM instance profile with CloudWatch Logs permissions to enable the preinstalled CloudWatch Agent.
+
+**First connection**
+
+ssh -i your-key.pem {product["ssh_username"]}@YOUR_PUBLIC_IP
+
+**First login to Open WebUI**
+
+Browse to https://YOUR_PUBLIC_IP (self-signed certificate; replace the files under /opt/corenova/ai/certs with your own).
+User: admin@local.host
+Password: your EC2 Instance ID.
+
+**Post-launch verification**
+
+nvidia-smi
+systemctl is-active auditd chrony rsyslog
+sudo systemctl is-active ufw
+sudo systemctl is-active docker
+sudo docker ps
+Expected: containers corenova-ollama and corenova-open-webui running (images download on first boot).
+
+**Sensitive data and credentials**
+
+The AMI does not include hardcoded passwords, private keys, AWS credentials, or model artifacts. The Open WebUI admin password is derived from the buyer's own EC2 Instance ID at first boot. AI engine ports (8080, 11434, 8000) are bound to localhost and denied by UFW; only the nginx HTTPS endpoint is reachable.
+
+**Encryption**
+
+The Marketplace source AMI uses unencrypted EBS snapshots as required for AWS Marketplace AMI ingestion. Buyers can launch or copy the AMI with encrypted EBS volumes according to their own AWS account policy.
+
+**Support**
+
+Email: support@corenovacloud.com
+Web: https://www.corenovacloud.com/
+
+Include AWS Region, AMI ID, EC2 Instance ID, instance type, and steps to reproduce."""

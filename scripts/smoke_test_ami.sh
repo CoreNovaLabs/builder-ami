@@ -48,6 +48,14 @@ p = product_by_key("$PRODUCT_KEY")
 print(p["operating_system_name"])
 PY
 )"
+PROFILE="$("$PYTHON" - <<PY
+import sys
+sys.path.insert(0, "scripts")
+from productlib import product_by_key
+p = product_by_key("$PRODUCT_KEY")
+print(p.get("profile", "hardened-linux"))
+PY
+)"
 
 STAMP="$(date -u +%Y%m%d%H%M%S)"
 KEY_NAME="builder-ami-smoke-${PRODUCT_KEY}-${STAMP}"
@@ -119,6 +127,32 @@ if [[ "$OS_NAME" == "DEBIAN" || "$OS_NAME" == "UBUNTU" ]]; then
   ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; uname -m; sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"; systemctl is-active rsyslog; sudo systemctl is-active ufw; sudo systemctl is-active chrony; sudo systemctl is-enabled unattended-upgrades || true'
 else
   ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; uname -m; sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"; systemctl is-active rsyslog; sudo systemctl is-active firewalld; sudo systemctl is-active chronyd; sudo systemctl is-enabled dnf-automatic.timer || true'
+fi
+
+# GPU profiles launch on a GPU instance type, so the DKMS modules must load
+# and expose the adapter without any manual step.
+if [[ "$PROFILE" == "gpu-ubuntu" || "$PROFILE" == "ai-inference" ]]; then
+  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; nvidia-smi -L; nvidia-smi --query-gpu=driver_version --format=csv,noheader'
+fi
+
+# The AI stack is a oneshot unit whose first boot pulls container images, so
+# poll it instead of failing immediately.
+if [[ "$PROFILE" == "ai-inference" ]]; then
+  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; sudo systemctl is-active docker; systemctl is-enabled corenova-docker-gpu.service setup-models-volume.service corenova-bootstrap-admin.service corenova-ai-stack.service nginx.service'
+  STACK_STATE=""
+  for _ in $(seq 1 60); do
+    STACK_STATE="$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'systemctl is-active corenova-ai-stack.service' 2>/dev/null || true)"
+    if [[ "$STACK_STATE" == "active" ]]; then
+      break
+    fi
+    sleep 10
+  done
+  if [[ "$STACK_STATE" != "active" ]]; then
+    ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'sudo systemctl status corenova-ai-stack.service --no-pager -l || true; sudo journalctl -u corenova-ai-stack.service --no-pager -n 100 || true' >&2 || true
+    echo "ERROR: corenova-ai-stack.service did not become active (state: ${STACK_STATE})" >&2
+    exit 1
+  fi
+  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; sudo docker ps --format "{{.Names}}"; sudo docker ps --format "{{.Names}}" | grep -x corenova-ollama; sudo docker ps --format "{{.Names}}" | grep -x corenova-open-webui; systemctl is-active nginx'
 fi
 
 echo "SMOKE_OK ${PRODUCT_KEY} ${AMI_ID} ${INSTANCE_ID}"

@@ -1,0 +1,75 @@
+# AI inference sandbox profile: NVIDIA driver + CUDA, Docker with the NVIDIA
+# container toolkit, and the Open WebUI + Ollama + vLLM stack with first-boot
+# bootstrap services. Ported from enterprise-ai-inference-ubuntu/v20260609;
+# OS hardening is handled by the shared core tasks.
+- name: Install NVIDIA driver and CUDA toolkit
+  ansible.builtin.script: gpu-ubuntu/install-gpu.sh
+  environment:
+    CUDA_TOOLKIT_VERSION: "12-4"
+    DRIVER_PACKAGE: cuda-drivers-550
+  register: gpu_install
+  failed_when: gpu_install.rc != 0
+
+# Headless build instance (no GPU attached): verify the CUDA toolchain only.
+- name: Verify CUDA toolchain (headless)
+  ansible.builtin.script: gpu-ubuntu/verify-gpu.sh
+  environment:
+    VERIFY_GPU: "false"
+
+- name: Install Docker Engine and NVIDIA container toolkit
+  ansible.builtin.script: ai-inference/install-container-toolkit.sh
+
+- name: Create AI stack install layout
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/corenova/ai/compose
+    - /opt/corenova/ai/config
+    - /opt/corenova/ai/cloud-init
+    - /opt/corenova/ai/scripts
+
+- name: Install compose assets
+  ansible.builtin.copy:
+    src: ai-inference/compose/
+    dest: /opt/corenova/ai/compose/
+    mode: preserve
+
+- name: Install CloudWatch agent configuration
+  ansible.builtin.copy:
+    src: ai-inference/config/
+    dest: /opt/corenova/ai/config/
+    mode: preserve
+
+- name: Install cloud-init first-boot configuration
+  ansible.builtin.copy:
+    src: ai-inference/cloud-init/
+    dest: /opt/corenova/ai/cloud-init/
+    mode: preserve
+
+- name: Install runtime helper scripts
+  ansible.builtin.copy:
+    src: ai-inference/scripts/
+    dest: /opt/corenova/ai/scripts/
+    mode: "0755"
+
+- name: Install AI stack services and nginx
+  ansible.builtin.script: ai-inference/install-ai-stack.sh
+
+- name: Apply AI security baseline (UFW, Docker iptables)
+  ansible.builtin.script: ai-inference/configure-ai-security.sh
+
+- name: Install cloud-init bootstrap hooks
+  ansible.builtin.script: ai-inference/install-cloud-init-bootstrap.sh
+
+# Headless build: full stack validation runs against GPU instances after
+# launch (docker compose pulls images on first boot).
+- name: Verify AI stack (headless)
+  ansible.builtin.script: ai-inference/verify-ai-stack.sh
+  environment:
+    VERIFY_GPU: "false"
+    VERIFY_AI: "false"
+
+- name: Marketplace pre-snapshot scrub
+  ansible.builtin.script: ai-inference/cleanup-scrub.sh
