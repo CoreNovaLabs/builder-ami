@@ -243,7 +243,7 @@ jobs:
           retention-days: 30
 
   validate:
-    needs: smoke
+    needs: [build, smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
