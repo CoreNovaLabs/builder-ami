@@ -58,9 +58,14 @@ PY
 )"
 
 STAMP="$(date -u +%Y%m%d%H%M%S)"
-KEY_NAME="builder-ami-smoke-${PRODUCT_KEY}-${STAMP}"
+# Resources are named/tagged to satisfy the tightly-scoped CoreNovaAmiBuilderRole
+# policy (packer_* key pairs, Project=builder-ami, Purpose=ami-build) so the
+# smoke test can reuse the builder role instead of a separate runner role.
+KEY_NAME="packer_smoke_${PRODUCT_KEY}-${STAMP}"
 KEY_FILE="build/${KEY_NAME}.pem"
-SG_NAME="builder-ami-smoke-${PRODUCT_KEY}-${STAMP}"
+SG_NAME="packer_smoke_${PRODUCT_KEY}-${STAMP}"
+# Same subnet the build uses; the builder role only allows RunInstances here.
+BUILD_SUBNET_ID="subnet-015304a4430329088"
 INSTANCE_ID=""
 SG_ID=""
 
@@ -82,7 +87,7 @@ mkdir -p build logs
 aws ec2 create-key-pair \
   --region "$REGION" \
   --key-name "$KEY_NAME" \
-  --tag-specifications "ResourceType=key-pair,Tags=[{Key=Name,Value=${KEY_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=ssh-smoke-test}]" \
+  --tag-specifications "ResourceType=key-pair,Tags=[{Key=Name,Value=${KEY_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=ami-build}]" \
   --query KeyMaterial \
   --output text > "$KEY_FILE"
 chmod 0600 "$KEY_FILE"
@@ -93,7 +98,7 @@ SG_ID="$(aws ec2 create-security-group \
   --group-name "$SG_NAME" \
   --description "$SG_NAME" \
   --vpc-id "$DEFAULT_VPC_ID" \
-  --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=ssh-smoke-test}]" \
+  --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=ami-build}]" \
   --query GroupId \
   --output text)"
 MY_IP="$(curl -fsSL https://checkip.amazonaws.com)/32"
@@ -105,9 +110,11 @@ INSTANCE_ID="$(aws ec2 run-instances \
   --instance-type "$INSTANCE_TYPE" \
   --key-name "$KEY_NAME" \
   --security-group-ids "$SG_ID" \
+  --subnet-id "$BUILD_SUBNET_ID" \
+  --associate-public-ip-address \
   --metadata-options HttpTokens=required,HttpEndpoint=enabled,HttpPutResponseHopLimit=1 \
-  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=smoke-test}]" \
-    "ResourceType=volume,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=smoke-test}]" \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=ami-build}]" \
+    "ResourceType=volume,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Project,Value=builder-ami},{Key=ProductKey,Value=${PRODUCT_KEY}},{Key=Purpose,Value=ami-build-temporary}]" \
   --query 'Instances[0].InstanceId' \
   --output text)"
 
