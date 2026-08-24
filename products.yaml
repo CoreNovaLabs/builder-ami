@@ -260,3 +260,89 @@ products:
     legacy:
       version_title: v20260611
       delivery_option_id: 4da4dc33-a0a1-3219-8321-f2fb22be1ac7
+
+  - key: ubuntu-2204-x86_64-ext4
+    title: "Ubuntu 22.04 LTS Hardened AMI"
+    entity_id: prod-hqk6nphpcucgk
+    visibility: Public
+    architecture: x86_64
+    operating_system_name: UBUNTU
+    operating_system_version: "22.04 LTS"
+    ssh_username: ubuntu
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 20
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    source_ami:
+      ssm_parameter: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+    legacy:
+      version_title: v20260611
+      delivery_option_id: 058d0cf5-667c-3fd5-98fe-d182aba81cd5
+
+  - key: amazon-linux-2023-x86_64
+    title: "Amazon Linux 2023 Hardened AMI"
+    entity_id: prod-jxjqud52zrofw
+    visibility: Public
+    architecture: x86_64
+    operating_system_name: AMAZONLINUX
+    operating_system_version: "Amazon Linux 2023"
+    ssh_username: ec2-user
+    scanning_port: 22
+    root_device_name: /dev/xvda
+    root_volume_size: 20
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: t3.medium
+    build_instance_type: t3.medium
+    source_ami:
+      ssm_parameter: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    legacy:
+      version_title: v1.2.0
+      delivery_option_id: 805a8b3a-8c06-32ab-966f-97fd32c96f99
+
+  - key: gpu-ubuntu-2204-x86_64
+    title: "Ubuntu 22.04 LTS Hardened GPU AMI CUDA Ready"
+    entity_id: prod-fltwx2ns5fmss
+    visibility: Public
+    profile: gpu-ubuntu
+    architecture: x86_64
+    operating_system_name: UBUNTU
+    operating_system_version: "22.04 LTS (Jammy)"
+    ssh_username: ubuntu
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 40
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: g4dn.xlarge
+    build_instance_type: t3.large
+    source_ami:
+      ssm_parameter: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+    legacy:
+      version_title: v20260605
+      delivery_option_id: ddfb4b27-3e11-3720-b6a4-39918d6c0dbd
+
+  - key: ai-inference-ubuntu-2204-x86_64
+    title: "Open WebUI + Ollama + vLLM Private AI Sandbox AMI"
+    entity_id: prod-sigm7ovzlqdte
+    visibility: Public
+    profile: ai-inference
+    architecture: x86_64
+    operating_system_name: UBUNTU
+    operating_system_version: "22.04 LTS"
+    ssh_username: ubuntu
+    scanning_port: 22
+    root_device_name: /dev/sda1
+    root_volume_size: 80
+    layout: ext4
+    filesystem: ext4
+    recommended_instance_type: g6.xlarge
+    build_instance_type: t3.large
+    source_ami:
+      ssm_parameter: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+    legacy:
+      version_title: v20260610
+      delivery_option_id: 274961ac-a6a1-3f9c-9c97-e0aeff134a11

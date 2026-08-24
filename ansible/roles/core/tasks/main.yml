@@ -157,7 +157,17 @@
   ansible.builtin.import_tasks: eks_admin_bastion.yml
   when: product_profile | default('hardened-linux') == "eks-admin-bastion"
 
+- name: Configure hardened GPU profile
+  ansible.builtin.import_tasks: gpu_ubuntu.yml
+  when: product_profile | default('hardened-linux') == "gpu-ubuntu"
+
+- name: Configure AI inference profile
+  ansible.builtin.import_tasks: ai_inference.yml
+  when: product_profile | default('hardened-linux') == "ai-inference"
+
 - name: Initialize AIDE database
+  # The GPU/AI profiles ship multi-GB CUDA trees that make the build-time
+  # AIDE scan impractical; those listings do not advertise AIDE.
   ansible.builtin.shell: |
     if command -v aideinit >/dev/null 2>&1; then
       aideinit
@@ -172,6 +182,7 @@
   args:
     creates: /var/lib/aide/aide.db.gz
   failed_when: false
+  when: product_profile | default('hardened-linux') not in ['gpu-ubuntu', 'ai-inference']
 
 - name: Remove temporary package caches
   ansible.builtin.shell: |

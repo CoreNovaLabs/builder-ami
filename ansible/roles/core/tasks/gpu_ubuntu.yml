@@ -1,0 +1,17 @@
+# Hardened GPU base profile: NVIDIA driver + CUDA toolkit on Ubuntu 22.04.
+# Ported from hardened-gpu-base-ubuntu/v20260605; hardening itself is handled
+# by the shared core tasks, so only the GPU stack runs here.
+- name: Install NVIDIA driver and CUDA toolkit
+  ansible.builtin.script: gpu-ubuntu/install-gpu.sh
+  environment:
+    CUDA_TOOLKIT_VERSION: "12-4"
+    DRIVER_PACKAGE: cuda-drivers-550
+  register: gpu_install
+  failed_when: gpu_install.rc != 0
+
+# Headless build instance (no GPU attached): verify the CUDA toolchain only.
+# nvidia-smi runs on buyer GPU instances and in the post-build smoke test.
+- name: Verify CUDA toolchain (headless)
+  ansible.builtin.script: gpu-ubuntu/verify-gpu.sh
+  environment:
+    VERIFY_GPU: "false"
