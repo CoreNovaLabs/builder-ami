@@ -298,7 +298,11 @@ jobs:
           python scripts/submit_changeset.py "$plan" --intent VALIDATE \
             > operations/reports/validate/start.json
           change_set_id="$(jq -r .ChangeSetId operations/reports/validate/start.json)"
-          [[ "$change_set_id" == change-set/* ]]
+          if [[ -z "$change_set_id" || "$change_set_id" == "null" ]]; then
+            echo "start-change-set did not return a ChangeSetId; captured stdout:" >&2
+            cat operations/reports/validate/start.json >&2
+            exit 1
+          fi
           status=""
           for _ in $(seq 1 240); do
             aws marketplace-catalog describe-change-set \
