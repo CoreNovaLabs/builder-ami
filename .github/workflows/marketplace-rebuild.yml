@@ -155,7 +155,7 @@ jobs:
           scripts/build_one.sh "$PRODUCT"
           ami_id_file="artifacts/${PRODUCT}-${version_title}.ami_id"
           if [[ ! -f "$ami_id_file" ]]; then
-            ami_id_file="$(find artifacts -maxdepth 1 -name "${PRODUCT}-v*.ami_id -print -quit)"
+            ami_id_file="$(find artifacts -maxdepth 1 -name "${PRODUCT}-v*.ami_id" -print -quit)"
           fi
           [[ -n "$ami_id_file" && -f "$ami_id_file" ]]
           ami_id="$(<"$ami_id_file")"
