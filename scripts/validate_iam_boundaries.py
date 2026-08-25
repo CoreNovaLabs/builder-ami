@@ -273,6 +273,23 @@ def validate_eks_delivery_release_roles() -> None:
     for required in (
         "prod-hapxotc2y7jmi",
         "prod-nspz2g6ki6qvo",
+        # Rebuilt AMI SKUs from products.yaml; keep in sync with the
+        # ApplyOnlyAllowlistedDeliveryVersions / DescribeGuardedEntities ARNs.
+        "prod-nptqkfuwrh5ik",
+        "prod-ereepz5xafyw2",
+        "prod-uca3f3ujrl5gg",
+        "prod-fkmhgwyoiz5ls",
+        "prod-hv5ebdtqf2too",
+        "prod-xn4vfcpfcxqoq",
+        "prod-4tnfzjf4ynkgw",
+        "prod-7cvvy2gp6ryoc",
+        "prod-j4fhcdjn5o46o",
+        "prod-lyolayhuy6hi2",
+        "prod-xcp3pur5ik4ti",
+        "prod-hqk6nphpcucgk",
+        "prod-jxjqud52zrofw",
+        "prod-fltwx2ns5fmss",
+        "prod-sigm7ovzlqdte",
         "AddDeliveryOptions",
         "aws-marketplace:Intent",
         "APPLY",
