@@ -38,6 +38,9 @@ class ImageCurrencyTests(unittest.TestCase):
         ):
             self.assertIn(value, tasks)
         self.assertNotIn("CORENOVA_KUBECTL_MINORS", tasks)
+        self.assertIn("name: gnupg2", tasks)
+        self.assertIn("allowerasing: true", tasks)
+        self.assertNotIn("- gnupg2-minimal", tasks)
         self.assertIn("awscliv2.zip.sig", tasks)
         self.assertIn("gpg --batch", tasks)
         self.assertIn("FB5DB77FD5C118B80511ADA8A6310ACC4672475C", tasks)
