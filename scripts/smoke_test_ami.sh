@@ -133,13 +133,13 @@ ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'cloud-init status --wait || tru
 if [[ "$OS_NAME" == "DEBIAN" || "$OS_NAME" == "UBUNTU" ]]; then
   ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; uname -m; sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"; systemctl is-active rsyslog; sudo systemctl is-active ufw; sudo systemctl is-active chrony; sudo systemctl is-enabled unattended-upgrades || true'
 else
-  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; uname -m; sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"; systemctl is-active rsyslog; sudo systemctl is-active firewalld; sudo systemctl is-active chronyd; sudo systemctl is-enabled dnf-automatic.timer || true'
+  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; uname -m; sudo sshd -T | grep -E "permitrootlogin|passwordauthentication"; systemctl is-active rsyslog; sudo systemctl is-active firewalld; sudo systemctl is-active chronyd; sudo systemctl is-enabled --quiet dnf-automatic.timer; sudo systemctl is-active --quiet dnf-automatic.timer; sudo grep -Eq "^[[:space:]]*upgrade_type[[:space:]]*=[[:space:]]*security[[:space:]]*$" /etc/dnf/automatic.conf; sudo grep -Eq "^[[:space:]]*download_updates[[:space:]]*=[[:space:]]*yes[[:space:]]*$" /etc/dnf/automatic.conf; sudo grep -Eq "^[[:space:]]*apply_updates[[:space:]]*=[[:space:]]*yes[[:space:]]*$" /etc/dnf/automatic.conf'
 fi
 
 # GPU profiles launch on a GPU instance type, so the DKMS modules must load
 # and expose the adapter without any manual step.
 if [[ "$PROFILE" == "gpu-ubuntu" || "$PROFILE" == "ai-inference" ]]; then
-  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; nvidia-smi -L; nvidia-smi --query-gpu=driver_version --format=csv,noheader'
+  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; nvidia-smi -L; nvidia-smi --query-gpu=driver_version --format=csv,noheader | grep -E "^580\."'
 fi
 
 # The AI stack is a oneshot unit whose first boot pulls container images, so
@@ -159,7 +159,7 @@ if [[ "$PROFILE" == "ai-inference" ]]; then
     echo "ERROR: corenova-ai-stack.service did not become active (state: ${STACK_STATE})" >&2
     exit 1
   fi
-  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; sudo docker ps --format "{{.Names}}"; sudo docker ps --format "{{.Names}}" | grep -x corenova-ollama; sudo docker ps --format "{{.Names}}" | grep -x corenova-open-webui; systemctl is-active nginx'
+  ssh "${SSH_OPTS[@]}" "${SSH_USER}@${PUBLIC_IP}" 'set -eux; sudo docker ps --format "{{.Names}}"; sudo docker ps --format "{{.Names}}" | grep -x corenova-ollama; sudo docker ps --format "{{.Names}}" | grep -x corenova-open-webui; test "$(sudo docker inspect --format "{{.Config.Image}}" corenova-ollama)" = ollama/ollama:0.33.3; test "$(sudo docker inspect --format "{{.Config.Image}}" corenova-open-webui)" = ghcr.io/open-webui/open-webui:v0.11.3; cd /opt/corenova/ai/compose; sudo docker compose --profile vllm config --images | grep -Fx vllm/vllm-openai:v0.29.0; systemctl is-active nginx'
 fi
 
 echo "SMOKE_OK ${PRODUCT_KEY} ${AMI_ID} ${INSTANCE_ID}"

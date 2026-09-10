@@ -16,8 +16,6 @@ from productlib import (
 
 def storage_description(product: dict[str, Any]) -> str:
     layout = product["layout"]
-    if product["key"] == "amazon-linux-2023-arm64-64k":
-        return "Ext4 root volume with Amazon Linux 2023 ARM64 64K-page kernel support."
     if layout == "lvm-xfs":
         return "LVM with XFS. The layout separates operating-system paths used by logs and temporary data."
     if layout == "lvm":
@@ -34,12 +32,7 @@ def feature_bullets(product: dict[str, Any]) -> list[str]:
         "OpenSCAP profile information included for buyer-side validation.",
     ]
     if product["key"] == "amazon-linux-2023-arm64-64k":
-        bullets.extend(
-            [
-                "SELinux enforcing mode.",
-                "Amazon Linux 2023 ARM64 64K-page kernel support.",
-            ]
-        )
+        bullets.append("SELinux enforcing mode.")
     if product["layout"].startswith("lvm"):
         bullets.append("corenova-lvm-grow.service included for online volume growth.")
     return bullets

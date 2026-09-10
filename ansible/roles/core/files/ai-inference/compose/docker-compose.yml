@@ -1,6 +1,6 @@
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.33.3
     container_name: corenova-ollama
     restart: unless-stopped
     runtime: nvidia
@@ -20,7 +20,7 @@ services:
               capabilities: [gpu]
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:v0.11.3
     container_name: corenova-open-webui
     restart: unless-stopped
     depends_on:
@@ -46,7 +46,7 @@ services:
 
   vllm:
     profiles: [vllm]
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.29.0
     container_name: corenova-vllm
     restart: unless-stopped
     runtime: nvidia

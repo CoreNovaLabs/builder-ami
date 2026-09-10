@@ -6,7 +6,7 @@
   ansible.builtin.script: gpu-ubuntu/install-gpu.sh
   environment:
     CUDA_TOOLKIT_VERSION: "12-4"
-    DRIVER_PACKAGE: cuda-drivers-550
+    DRIVER_PACKAGE: cuda-drivers-580
   register: gpu_install
   failed_when: gpu_install.rc != 0
 

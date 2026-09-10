@@ -3,6 +3,7 @@
     name:
       - bash-completion
       - git
+      - gnupg2-minimal
       - gzip
       - jq
       - less
@@ -51,6 +52,14 @@
     - /opt/corenova/eks
     - /opt/corenova/eks/bin
     - /opt/corenova/eks/examples
+
+- name: Install AWS CLI release signing key
+  ansible.builtin.copy:
+    src: eks-admin-bastion/aws-cli-team.asc
+    dest: /etc/corenova/eks-admin-bastion/aws-cli-team.asc
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Create non-privileged Run As operator
   ansible.builtin.user:
@@ -125,19 +134,36 @@
       install -d -m 0755 /opt/corenova/eks/bin /opt/corenova/eks/examples /etc/corenova/eks-admin-bastion
       : >/etc/corenova/eks-admin-bastion/source-artifact-sha256.txt
 
-      if ! aws --version 2>&1 | grep -q 'aws-cli/2'; then
-        awscli_version="${CORENOVA_AWSCLI_VERSION:-2.33.13}"
-        work="$tmp_root/awscli"
-        mkdir -p "$work"
-        curl_retry --silent --output "$work/awscliv2.zip" \
-          "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}-${awscli_version}.zip"
-        unzip -q "$work/awscliv2.zip" -d "$work"
-        "$work/aws/install" --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+      awscli_version="${CORENOVA_AWSCLI_VERSION:-2.36.42}"
+      work="$tmp_root/awscli"
+      gpg_home="$work/gnupg"
+      mkdir -p "$work" "$gpg_home"
+      chmod 0700 "$gpg_home"
+      curl_retry --silent --output "$work/awscliv2.zip" \
+        "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}-${awscli_version}.zip"
+      curl_retry --silent --output "$work/awscliv2.zip.sig" \
+        "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}-${awscli_version}.zip.sig"
+      gpg --batch --homedir "$gpg_home" --import \
+        /etc/corenova/eks-admin-bastion/aws-cli-team.asc
+      fingerprint="$(gpg --batch --homedir "$gpg_home" --with-colons --fingerprint \
+        A6310ACC4672475C | awk -F: '$1 == "fpr" {print $10; exit}')"
+      if [ "$fingerprint" != "FB5DB77FD5C118B80511ADA8A6310ACC4672475C" ]; then
+        echo "Unexpected AWS CLI signing-key fingerprint: ${fingerprint}" >&2
+        exit 1
       fi
+      gpg --batch --homedir "$gpg_home" --verify \
+        "$work/awscliv2.zip.sig" "$work/awscliv2.zip"
+      awscli_sha256="$(sha256sum "$work/awscliv2.zip" | awk '{print $1}')"
+      printf '%s  %s\n' "$awscli_sha256" \
+        "awscli-exe-linux-${awscli_arch}-${awscli_version}.zip" \
+        >>/etc/corenova/eks-admin-bastion/source-artifact-sha256.txt
+      unzip -q "$work/awscliv2.zip" -d "$work"
+      "$work/aws/install" --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+      hash -r
+      aws --version 2>&1 | grep -q "aws-cli/${awscli_version} "
 
       latest_kubectl=""
-      for minor in ${CORENOVA_KUBECTL_MINORS:-1.30 1.31 1.32 1.33 1.34 1.35 1.36}; do
-        version="$(curl_retry --silent "https://dl.k8s.io/release/stable-${minor}.txt")"
+      for version in ${CORENOVA_KUBECTL_VERSIONS:-v1.31.14 v1.32.13 v1.33.13 v1.34.11 v1.35.8 v1.36.4}; do
         target="/opt/corenova/eks/bin/kubectl-${version}"
         if [ ! -x "$target" ]; then
           bin_path="$tmp_root/kubectl-${version}"
@@ -153,7 +179,7 @@
       done
       ln -sfn "$latest_kubectl" /usr/local/bin/kubectl
 
-      helm_tag="${CORENOVA_HELM_VERSION:-v3.21.2}"
+      helm_tag="${CORENOVA_HELM_VERSION:-v3.22.0}"
       helm_work="$tmp_root/helm"
       mkdir -p "$helm_work"
       curl_retry --silent --output "$helm_work/helm.tar.gz" \
@@ -165,7 +191,7 @@
       tar -xzf "$helm_work/helm.tar.gz" -C "$helm_work"
       install -m 0755 "$helm_work/linux-${k8s_arch}/helm" /usr/local/bin/helm
 
-      eksctl_tag="${CORENOVA_EKSCTL_VERSION:-v0.229.0}"
+      eksctl_tag="${CORENOVA_EKSCTL_VERSION:-v0.230.0}"
       eksctl_work="$tmp_root/eksctl"
       mkdir -p "$eksctl_work"
       curl_retry --silent --output "$eksctl_work/eksctl.tar.gz" \
@@ -189,14 +215,14 @@
       tar -xzf "$k9s_work/k9s.tar.gz" -C "$k9s_work"
       install -m 0755 "$k9s_work/k9s" /usr/local/bin/k9s
 
-      yq_tag="${CORENOVA_YQ_VERSION:-v4.53.3}"
+      yq_tag="${CORENOVA_YQ_VERSION:-v4.53.6}"
       yq_work="$tmp_root/yq"
       mkdir -p "$yq_work"
       curl_retry --silent --output "$yq_work/yq_linux_${k8s_arch}" \
         "https://github.com/mikefarah/yq/releases/download/${yq_tag}/yq_linux_${k8s_arch}"
       case "$k8s_arch" in
-        amd64) yq_sha256="${CORENOVA_YQ_SHA256_AMD64:-fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4}" ;;
-        arm64) yq_sha256="${CORENOVA_YQ_SHA256_ARM64:-578648e463a11c1b6db6010cbf41eafed6bee79466fcffa1bb446672cf7945ea}" ;;
+        amd64) yq_sha256="${CORENOVA_YQ_SHA256_AMD64:-c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385}" ;;
+        arm64) yq_sha256="${CORENOVA_YQ_SHA256_ARM64:-88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09}" ;;
       esac
       echo "${yq_sha256}  $yq_work/yq_linux_${k8s_arch}" | sha256sum --check -
       printf '%s  %s\n' "$yq_sha256" "yq_linux_${k8s_arch}" \
@@ -226,7 +252,7 @@
       set -euo pipefail
 
       if [ "$#" -ne 1 ]; then
-        echo "usage: kubectl-select <1.30|...|1.36|v1.36.0>" >&2
+        echo "usage: kubectl-select <1.31|...|1.36|v1.36.4>" >&2
         echo "available:" >&2
         ls -1 /opt/corenova/eks/bin/kubectl-v* 2>/dev/null | sed 's#.*/kubectl-#  #' >&2 || true
         exit 2

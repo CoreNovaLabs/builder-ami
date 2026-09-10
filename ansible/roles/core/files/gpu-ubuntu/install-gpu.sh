@@ -5,7 +5,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 CUDA_TOOLKIT_VERSION="${CUDA_TOOLKIT_VERSION:-12-4}"
-DRIVER_PACKAGE="${DRIVER_PACKAGE:-cuda-drivers-550}"
+DRIVER_PACKAGE="${DRIVER_PACKAGE:-cuda-drivers-580}"
 CUDA_KEYRING_URL="${CUDA_KEYRING_URL:-https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb}"
 
 log() { echo "[install-gpu] $*"; }

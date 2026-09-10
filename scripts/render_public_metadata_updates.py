@@ -15,6 +15,12 @@ CATALOG = "AWSMarketplace"
 SELLER_PROFILE_URL = "https://aws.amazon.com/marketplace/seller-profile?id=seller-kbf3ztbtbdc5o"
 CORENOVA_URL = "https://www.corenovacloud.com/"
 
+# Correct a legacy product name that claimed a 64K page-size kernel even though
+# its configured Amazon Linux public source uses the standard ARM64 kernel.
+TITLE_OVERRIDES = {
+    "prod-fkmhgwyoiz5ls": "Amazon Linux 2023 Graviton Hardened (ARM64, Ext4)",
+}
+
 RELATED_URLS = {
     "ubuntu_2204": "https://aws.amazon.com/marketplace/pp/prodview-u66ma5qrdkvtw",
     "amazon_linux_2023": "https://aws.amazon.com/marketplace/pp/prodview-gricbzzlztsae",
@@ -249,10 +255,10 @@ PLANS: dict[str, ProductPlan] = {
         "linux",
         "Amazon Linux 2023",
         "arm64",
-        "Ext4 root volume with Amazon Linux 2023 ARM64 64K-page kernel support.",
+        "Standard Ext4 root volume on the Amazon Linux 2023 ARM64 kernel.",
         "ec2-user",
         "t4g.medium",
-        ["graviton hardened", "64k page linux", "cis baseline"],
+        ["graviton hardened", "amazon linux arm64", "cis baseline"],
         [
             ("Amazon Linux 2023 Hardened AMI", RELATED_URLS["amazon_linux_2023"]),
             ("Ubuntu 22.04 LTS Hardened AMI", RELATED_URLS["ubuntu_2204"]),
@@ -458,8 +464,6 @@ def long_linux(title: str, plan: ProductPlan) -> str:
     extra = []
     if "LVM" in plan.storage or "LVM" in title:
         extra.append("- Online volume-growth helper for LVM-based layouts.")
-    if "64K" in title or "64K-page" in plan.storage:
-        extra.append("- ARM64 64K-page kernel support for compatible Graviton workloads.")
     if plan.os_display.startswith("Amazon Linux"):
         extra.append("- SELinux-oriented Amazon Linux 2023 baseline where supported.")
     extra_block = "\n".join(extra)
@@ -732,7 +736,7 @@ def render_change_set(entity: dict[str, Any]) -> dict[str, Any]:
     described = describe_entity(entity_id)
     details = details_document(described)
     description = details["Description"]
-    title = description["ProductTitle"]
+    title = TITLE_OVERRIDES.get(entity_id, description["ProductTitle"])
     short, long, highlights = build_copy(title, plan)
     return {
         "Catalog": CATALOG,
@@ -782,7 +786,7 @@ def main() -> None:
         details = details_document(described)
         write_json(backup_dir / f"{entity['EntityId']}.json", described)
         change_set = render_change_set(entity)
-        title = details["Description"]["ProductTitle"]
+        title = change_set["ChangeSet"][0]["DetailsDocument"]["ProductTitle"]
         path = output_dir / f"{entity['EntityId']}-update-information.json"
         write_json(path, change_set)
         summary.append(
