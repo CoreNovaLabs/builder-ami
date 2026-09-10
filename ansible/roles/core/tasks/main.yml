@@ -145,12 +145,50 @@
       APT::Periodic::Unattended-Upgrade "1";
   when: ansible_os_family == "Debian"
 
+- name: Configure automatic security updates on RedHat family
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^{{ item.key }}\s*='
+    line: "{{ item.key }} = {{ item.value }}"
+    insertafter: '^\[commands\]$'
+  loop:
+    - key: upgrade_type
+      value: security
+    - key: download_updates
+      value: "yes"
+    - key: apply_updates
+      value: "yes"
+  when: ansible_os_family == "RedHat"
+
 - name: Enable dnf automatic on RedHat family
   ansible.builtin.service:
     name: dnf-automatic.timer
     enabled: true
     state: started
-  failed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Verify dnf automatic policy on RedHat family
+  ansible.builtin.command: >-
+    grep -Eq '^[[:space:]]*{{ item.key }}[[:space:]]*=[[:space:]]*{{ item.value }}[[:space:]]*$'
+    /etc/dnf/automatic.conf
+  loop:
+    - key: upgrade_type
+      value: security
+    - key: download_updates
+      value: "yes"
+    - key: apply_updates
+      value: "yes"
+  changed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Verify dnf automatic timer is enabled on RedHat family
+  ansible.builtin.command: systemctl is-enabled --quiet dnf-automatic.timer
+  changed_when: false
+  when: ansible_os_family == "RedHat"
+
+- name: Verify dnf automatic timer is active on RedHat family
+  ansible.builtin.command: systemctl is-active --quiet dnf-automatic.timer
+  changed_when: false
   when: ansible_os_family == "RedHat"
 
 - name: Configure EKS admin bastion profile

@@ -41,6 +41,12 @@ def load_config() -> dict[str, Any]:
     products = config.get("products") or []
     keys = [p["key"] for p in products]
     titles = [p["title"] for p in products]
+    accepted_titles = []
+    for product in products:
+        aliases = product.get("accepted_live_titles", [])
+        if not isinstance(aliases, list):
+            fail(f"accepted_live_titles must be a list for {product['key']} in {path}")
+        accepted_titles.extend(aliases)
     entities = [
         p.get("entity_id")
         for p in products
@@ -49,6 +55,11 @@ def load_config() -> dict[str, Any]:
     for label, values in (("key", keys), ("title", titles), ("entity_id", entities)):
         if len(values) != len(set(values)):
             fail(f"duplicate product {label} in {path}")
+    all_titles = titles + accepted_titles
+    if not all(isinstance(title, str) and title for title in all_titles):
+        fail(f"product titles and accepted_live_titles must be non-empty strings in {path}")
+    if len(all_titles) != len(set(all_titles)):
+        fail(f"duplicate product title or accepted_live_title in {path}")
     if path.resolve() == PRODUCTS_FILE.resolve() and len(products) != 15:
         fail(f"expected exactly 15 allowlisted products, found {len(products)}")
     return config
@@ -98,10 +109,11 @@ def assert_marketplace_product(product: dict[str, Any]) -> dict[str, Any]:
     )
     details = entity.get("DetailsDocument") or json.loads(entity["Details"])
     title = details.get("Description", {}).get("ProductTitle")
-    if title != product["title"]:
+    expected_titles = [product["title"], *product.get("accepted_live_titles", [])]
+    if title not in expected_titles:
         fail(
             "Marketplace entity/title mismatch for "
-            f"{product['key']}: expected {product['title']!r}, got {title!r}"
+            f"{product['key']}: expected one of {expected_titles!r}, got {title!r}"
         )
     return {"entity": entity, "details": details}
 
@@ -236,7 +248,7 @@ Stack:
 - SSH key-only access, root login disabled, auditd, rsyslog, chrony.
 - UFW firewall baseline with SSH allowed.
 - Automatic security updates via unattended-upgrades.
-- NVIDIA driver (LTS branch, currently 550) and CUDA 12.4 toolkit installed: compiler and compute libraries.
+- NVIDIA driver (LTS branch 580) and CUDA 12.4 toolkit installed: compiler and compute libraries.
 - Driver kernel modules are built with DKMS at image build time and load on GPU instance launch (nvidia-smi ready).
 - Cloud-init cleaned before image capture.
 - Marketplace checks require unencrypted EBS snapshots and no existing product codes.
@@ -260,9 +272,9 @@ Stack:
 - Ubuntu 22.04 LTS with latest upstream security updates at build time.
 - SSH key-only access, root login disabled, auditd, rsyslog, chrony.
 - UFW firewall baseline: SSH and HTTPS allowed; AI engine ports bound to localhost only.
-- NVIDIA driver (LTS branch, currently 550) and CUDA 12.4 toolkit; DKMS modules load on GPU instance launch.
+- NVIDIA driver (LTS branch 580) and CUDA 12.4 toolkit; DKMS modules load on GPU instance launch.
 - Docker Engine with the NVIDIA container toolkit and GPU runtime preconfigured.
-- Open WebUI and Ollama start automatically on first boot via Docker Compose; optional vLLM profile included.
+- Open WebUI v0.11.3 and Ollama v0.33.3 start automatically on first boot via Docker Compose; optional vLLM v0.29.0 profile included.
 - nginx TLS endpoint (self-signed certificate; buyers can replace /opt/corenova/ai/certs).
 - Amazon CloudWatch Agent installed and enabled (requires an instance profile with CloudWatch Logs permissions).
 - First-boot bootstrap seeds the Open WebUI admin account (admin@local.host, password = EC2 Instance ID).

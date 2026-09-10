@@ -90,7 +90,10 @@ products:
       delivery_option_id: 5fdcc190-cd65-39ba-a29e-547502ce1aa4
 
   - key: amazon-linux-2023-arm64-64k
-    title: "Amazon Linux 2023 Graviton Hardened (ARM64, 64K-Page)"
+    title: "Amazon Linux 2023 Graviton Hardened (ARM64, Ext4)"
+    # Temporary migration alias: remove after the Marketplace title update succeeds.
+    accepted_live_titles:
+      - "Amazon Linux 2023 Graviton Hardened (ARM64, 64K-Page)"
     entity_id: prod-fkmhgwyoiz5ls
     visibility: Limited
     architecture: arm64
