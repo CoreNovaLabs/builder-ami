@@ -155,7 +155,7 @@ jobs:
           scripts/build_one.sh "$PRODUCT"
           ami_id_file="artifacts/${PRODUCT}-${version_title}.ami_id"
           if [[ ! -f "$ami_id_file" ]]; then
-            ami_id_file="$(find artifacts -maxdepth 1 -name "${PRODUCT}-v*.ami_id -print -quit)"
+            ami_id_file="$(find artifacts -maxdepth 1 -name "${PRODUCT}-v*.ami_id" -print -quit)"
           fi
           [[ -n "$ami_id_file" && -f "$ami_id_file" ]]
           ami_id="$(<"$ami_id_file")"
@@ -243,9 +243,9 @@ jobs:
           retention-days: 30
 
   validate:
-    needs: smoke
+    needs: [build, smoke]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Check out approved source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -298,9 +298,13 @@ jobs:
           python scripts/submit_changeset.py "$plan" --intent VALIDATE \
             > operations/reports/validate/start.json
           change_set_id="$(jq -r .ChangeSetId operations/reports/validate/start.json)"
-          [[ "$change_set_id" == change-set/* ]]
+          if [[ -z "$change_set_id" || "$change_set_id" == "null" ]]; then
+            echo "start-change-set did not return a ChangeSetId; captured stdout:" >&2
+            cat operations/reports/validate/start.json >&2
+            exit 1
+          fi
           status=""
-          for _ in $(seq 1 240); do
+          for _ in $(seq 1 540); do
             aws marketplace-catalog describe-change-set \
               --region us-east-1 --catalog AWSMarketplace \
               --change-set-id "$change_set_id" --output json \

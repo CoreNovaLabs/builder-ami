@@ -7,7 +7,11 @@
       "Action": "ssm:GetParameter",
       "Resource": [
         "arn:aws:ssm:us-east-1::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
-        "arn:aws:ssm:us-east-1::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+        "arn:aws:ssm:us-east-1::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64",
+        "arn:aws:ssm:us-east-1::parameter/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id",
+        "arn:aws:ssm:us-east-1::parameter/aws/service/canonical/ubuntu/server/22.04/stable/current/arm64/hvm/ebs-gp2/ami-id",
+        "arn:aws:ssm:us-east-1::parameter/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+        "arn:aws:ssm:us-east-1::parameter/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id"
       ]
     },
     {
@@ -71,7 +75,15 @@
       "Resource": "arn:aws:ec2:us-east-1::image/*",
       "Condition": {
         "StringEquals": {
-          "aws:ResourceAccount": "137112412989"
+          "aws:ResourceAccount": [
+            "137112412989",
+            "099720109477",
+            "582920575154",
+            "125523088429",
+            "136693071363",
+            "764336703387",
+            "792107900819"
+          ]
         }
       }
     },
@@ -107,7 +119,10 @@
           "aws:RequestTag/Purpose": "ami-build",
           "ec2:InstanceType": [
             "t3.medium",
-            "t4g.medium"
+            "t4g.medium",
+            "t3.large",
+            "g4dn.xlarge",
+            "g6.xlarge"
           ]
         }
       }
@@ -116,13 +131,7 @@
       "Sid": "Interface",
       "Effect": "Allow",
       "Action": "ec2:RunInstances",
-      "Resource": "arn:aws:ec2:us-east-1:582920575154:network-interface/*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestTag/Project": "builder-ami",
-          "aws:RequestTag/Purpose": "ami-build"
-        }
-      }
+      "Resource": "arn:aws:ec2:us-east-1:582920575154:network-interface/*"
     },
     {
       "Sid": "Volume",

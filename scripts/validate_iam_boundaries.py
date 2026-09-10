@@ -31,6 +31,19 @@ def fail(message: str) -> None:
     raise SystemExit(f"IAM_BOUNDARY_ERROR: {message}")
 
 
+# Curated OS-vendor publisher accounts the builder may launch source AMIs from.
+# Keep this in sync with ami-builder-policy.json:UseAmazonAmi.
+ALLOWED_SOURCE_AMI_OWNERS = {
+    "137112412989",  # Amazon Linux
+    "099720109477",  # Canonical Ubuntu
+    "582920575154",  # seller-published
+    "125523088429",  # CentOS Stream
+    "136693071363",  # Debian
+    "764336703387",  # AlmaLinux
+    "792107900819",  # Rocky Linux
+}
+
+
 def validate_builder() -> None:
     path = IAM / "ami-builder-policy.json"
     policy = load(path.name)
@@ -69,8 +82,19 @@ def validate_builder() -> None:
         ),
         None,
     )
-    if source_image is None or string_equals(source_image).get("aws:ResourceAccount") != "137112412989":
-        fail("builder does not restrict source AMIs to the Amazon Linux publisher account")
+    if source_image is None:
+        fail("builder is missing the UseAmazonAmi RunInstances statement")
+    resource_account = string_equals(source_image).get("aws:ResourceAccount")
+    owners = (
+        [resource_account]
+        if isinstance(resource_account, str)
+        else list(resource_account or [])
+    )
+    if not owners:
+        fail("builder source AMI must use the numeric aws:ResourceAccount condition")
+    unknown = sorted(set(owners) - ALLOWED_SOURCE_AMI_OWNERS)
+    if unknown:
+        fail(f"builder source AMI owners are not in the allowlist: {unknown}")
     if "ec2:Owner" in json.dumps(source_image):
         fail("builder source AMI must use the numeric aws:ResourceAccount condition")
     policy_rendered = json.dumps(policy)
@@ -249,6 +273,23 @@ def validate_eks_delivery_release_roles() -> None:
     for required in (
         "prod-hapxotc2y7jmi",
         "prod-nspz2g6ki6qvo",
+        # Rebuilt AMI SKUs from products.yaml; keep in sync with the
+        # ApplyOnlyAllowlistedDeliveryVersions / DescribeGuardedEntities ARNs.
+        "prod-nptqkfuwrh5ik",
+        "prod-ereepz5xafyw2",
+        "prod-uca3f3ujrl5gg",
+        "prod-fkmhgwyoiz5ls",
+        "prod-hv5ebdtqf2too",
+        "prod-xn4vfcpfcxqoq",
+        "prod-4tnfzjf4ynkgw",
+        "prod-7cvvy2gp6ryoc",
+        "prod-j4fhcdjn5o46o",
+        "prod-lyolayhuy6hi2",
+        "prod-xcp3pur5ik4ti",
+        "prod-hqk6nphpcucgk",
+        "prod-jxjqud52zrofw",
+        "prod-fltwx2ns5fmss",
+        "prod-sigm7ovzlqdte",
         "AddDeliveryOptions",
         "aws-marketplace:Intent",
         "APPLY",
