@@ -1,9 +1,15 @@
+- name: Replace minimal GnuPG with the full package on RedHat family
+  ansible.builtin.dnf:
+    name: gnupg2
+    state: present
+    allowerasing: true
+  when: ansible_os_family == "RedHat"
+
 - name: Install EKS admin dependency packages on RedHat family
   ansible.builtin.dnf:
     name:
       - bash-completion
       - git
-      - gnupg2-minimal
       - gzip
       - jq
       - less
