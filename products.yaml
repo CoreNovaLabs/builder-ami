@@ -136,7 +136,7 @@ products:
       delivery_option_id: 36716259-48ff-32ac-a898-7cc79e246b76
 
   - key: debian-12-x86_64-ext4
-    title: "Debian 12 Bookworm Minimal Hardened Base Image (x86_64, Ext4)"
+    title: "Debian 12 Bookworm Hardened Base Image (x86_64, Ext4)"
     entity_id: prod-xn4vfcpfcxqoq
     visibility: Limited
     architecture: x86_64
@@ -244,7 +244,7 @@ products:
       delivery_option_id: ca635cd4-adc8-318f-866a-4a1d0d30b085
 
   - key: ubuntu-2404-x86_64-ext4
-    title: "Ubuntu 24.04 LTS Minimal Hardened Base Image (x86_64, Ext4)"
+    title: "Ubuntu 24.04 LTS Hardened Base Image (x86_64, Ext4)"
     entity_id: prod-xcp3pur5ik4ti
     visibility: Limited
     architecture: x86_64
